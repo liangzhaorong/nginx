@@ -425,6 +425,11 @@ struct ngx_http_request_s {
     ngx_http_handler_pt               content_handler;
     ngx_uint_t                        access_code;
 
+    /*
+     * 变量值如果可以被缓存，则它一定只能缓存在每一个 HTTP 请求内，对于 Nginx
+     * 这样的 web 服务器，不可能为不同的 HTTP 请求缓存同一个值。
+     * variables 数组存储所有序列化了的变量值，数组下标即为索引号.
+     */
     ngx_http_variable_value_t        *variables;
 
 #if (NGX_PCRE)

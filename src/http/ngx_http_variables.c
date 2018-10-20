@@ -526,6 +526,14 @@ ngx_http_add_prefix_variable(ngx_conf_t *cf, ngx_str_t *name, ngx_uint_t flags)
 }
 
 
+/*
+ * 设置变量被索引，并获得索引号，它是使用 ngx_http_get_indexed_variable、
+ * ngx_http_get_flushed_variable 方法的前置方法.
+ * 调用它意味着这个变量会被频繁地使用，希望 Nginx 处理这个变量时效率更高，体现在：
+ *   - 变量值可以被缓存，重复读取时不用每次解析
+ *   - 定义变量的解析方法时，可以通过索引直接找到该方法进行解析，而不是通过操作散列表
+ *   - Nginx 初始化 HTTP 请求时，就需要为这个变量预分配 ngx_http_variable_value_t 变量值结构体
+ */
 ngx_int_t
 ngx_http_get_variable_index(ngx_conf_t *cf, ngx_str_t *name)
 {
@@ -586,6 +594,11 @@ ngx_http_get_variable_index(ngx_conf_t *cf, ngx_str_t *name)
 }
 
 
+/*
+ * 根据 ngx_http_get_variable_index 得到的索引号，获取被索引过的变量的值。若变量被解析
+ * 过一次后其值是会被缓存的，这样该方法再次调用后将会直接获取缓存过的值，而不是重新解析。
+ * 这个方法是忽略 NGX_HTTP_VAR_NOCACHEABLE 标志位的.
+ */
 ngx_http_variable_value_t *
 ngx_http_get_indexed_variable(ngx_http_request_t *r, ngx_uint_t index)
 {
@@ -636,6 +649,11 @@ ngx_http_get_indexed_variable(ngx_http_request_t *r, ngx_uint_t index)
 }
 
 
+/*
+ * 与 ngx_http_get_indexed_variable 相似，区别是：如果 flags 中设置了 NGX_HTTP_VAR_NOCACHEABLE 标志位，
+ * 那么 ngx_http_get_indexed_variable 方法会忽略这个标志位，本方法则不会使用已经缓存过的变量值，每次
+ * 取值时皆重新解析.
+ */
 ngx_http_variable_value_t *
 ngx_http_get_flushed_variable(ngx_http_request_t *r, ngx_uint_t index)
 {
@@ -656,6 +674,11 @@ ngx_http_get_flushed_variable(ngx_http_request_t *r, ngx_uint_t index)
 }
 
 
+/*
+ * 根据变量名称，从被 hash 过的散列表里找到相应的变量并调用其解析方法获得值，
+ * 这里不存在缓存变量值的可能。同时若变量是属于特殊变量（如 arg_, http_, sent_http_, 
+ * cookie_, upstream_http_ 等）也可以从本方法中获取解析出的值.
+ */
 ngx_http_variable_value_t *
 ngx_http_get_variable(ngx_http_request_t *r, ngx_str_t *name, ngx_uint_t key)
 {

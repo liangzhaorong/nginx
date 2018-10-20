@@ -571,6 +571,12 @@ ngx_http_create_request(ngx_connection_t *c)
 
     cmcf = ngx_http_get_module_main_conf(r, ngx_http_core_module);
 
+    /*
+     * 当 HTTP 请求刚到达 Nginx 时，就会创建缓存变量的 variables 数组。一旦某个变量的
+     * ngx_http_variable_value_t 值结构体被缓存，取值时就会优先使用它.
+     * 缓存变量值的 variables 数组下标，与索引化的、表示变量名的数组 cmcf->variables
+     * 下标，它们是一一对应的.
+     */
     r->variables = ngx_pcalloc(r->pool, cmcf->variables.nelts
                                         * sizeof(ngx_http_variable_value_t));
     if (r->variables == NULL) {

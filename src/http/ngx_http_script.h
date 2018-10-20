@@ -14,9 +14,12 @@
 #include <ngx_http.h>
 
 
+// 脚本引擎
 typedef struct {
+    // 指向待执行的脚本指令
     u_char                     *ip;
     u_char                     *pos;
+    // 变量值构成的栈
     ngx_http_variable_value_t  *sp;
 
     ngx_str_t                   buf;
@@ -31,7 +34,9 @@ typedef struct {
     unsigned                    is_args:1;
     unsigned                    log:1;
 
+    // 脚本引擎执行状态
     ngx_int_t                   status;
+    // 指向当前脚本引擎所属的 HTTP 请求
     ngx_http_request_t         *request;
 } ngx_http_script_engine_t;
 

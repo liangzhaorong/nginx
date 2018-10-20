@@ -3159,6 +3159,9 @@ ngx_http_core_type(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
 static ngx_int_t
 ngx_http_core_preconfiguration(ngx_conf_t *cf)
 {
+    /* 1. 把用于存放变量的核心结构体初始化；
+     * 2. 再将 Nginx 核心变量加入准备 hash 的数组 variables_keys 中
+     */
     return ngx_http_variables_add_core_vars(cf);
 }
 
