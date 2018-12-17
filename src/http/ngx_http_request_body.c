@@ -38,6 +38,7 @@ ngx_http_read_client_request_body(ngx_http_request_t *r,
     ngx_http_request_body_t   *rb;
     ngx_http_core_loc_conf_t  *clcf;
 
+    /* 原始请求的引用计数加 1 */
     r->main->count++;
 
     if (r != r->main || r->request_body || r->discard_body) {

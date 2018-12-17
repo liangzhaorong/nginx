@@ -292,14 +292,20 @@ typedef struct {
 typedef void (*ngx_http_client_body_handler_pt)(ngx_http_request_t *r);
 
 typedef struct {
+    /* 存放 HTTP 包体的临时文件 */
     ngx_temp_file_t                  *temp_file;
+    /* 接收 HTTP 包体的缓冲区链表。当包体需要全部存放在内存中时，如果一块
+     * ngx_buf_t 缓冲区无法存放完，这时就需要使用 ngx_chain_t 链表来存放 */
     ngx_chain_t                      *bufs;
+    /* 直接接收 HTTP 包体的缓存 */
     ngx_buf_t                        *buf;
+    /* 根据 content-length 头部和已接收到的包体长度，计算出的还需要接收的包体长度 */
     off_t                             rest;
     off_t                             received;
     ngx_chain_t                      *free;
     ngx_chain_t                      *busy;
     ngx_http_chunked_t               *chunked;
+    /* HTTP 包体接收完毕后的回调方法 */
     ngx_http_client_body_handler_pt   post_handler;
 } ngx_http_request_body_t;
 
@@ -332,8 +338,12 @@ typedef void (*ngx_http_cleanup_pt)(void *data);
 typedef struct ngx_http_cleanup_s  ngx_http_cleanup_t;
 
 struct ngx_http_cleanup_s {
+    /* 由 HTTP 模块提供的清理资源的回调方法 */
     ngx_http_cleanup_pt               handler;
+    /* 希望给上面的 handler 传递的参数 */
     void                             *data;
+    /* 一个请求可能有多个 ngx_http_cleanup_t 清理方法，这些清理方法间就是通过
+     * next 指针连接成单链表 */
     ngx_http_cleanup_t               *next;
 };
 
@@ -359,11 +369,14 @@ struct ngx_http_postponed_request_s {
 typedef struct ngx_http_posted_request_s  ngx_http_posted_request_t;
 
 struct ngx_http_posted_request_s {
+    /* 指向当前待处理子请求的 ngx_http_request_t 结构体 */
     ngx_http_request_t               *request;
+    /* 指向下一个子请求，如果没有，则为 NULL 空指针 */
     ngx_http_posted_request_t        *next;
 };
 
 
+/* 由 HTTP 模块实现的 handler 处理方法 */
 typedef ngx_int_t (*ngx_http_handler_pt)(ngx_http_request_t *r);
 typedef void (*ngx_http_event_handler_pt)(ngx_http_request_t *r);
 
@@ -371,14 +384,25 @@ typedef void (*ngx_http_event_handler_pt)(ngx_http_request_t *r);
 struct ngx_http_request_s {
     uint32_t                          signature;         /* "HTTP" */
 
+    /* 这个请求对应的客户端连接 */
     ngx_connection_t                 *connection;
 
+    /* 指向存放所有 HTTP 模块的上下文结构体的指针数组 */
     void                            **ctx;
+    /* 指向请求对应的存放 main 级别配置结构体的指针数组 */
     void                            **main_conf;
+    /* 指向请求对应的存放 srv 级别配置结构体的指针数组 */
     void                            **srv_conf;
+    /* 指向请求对应的存放 loc 级别配置结构体的指针数组 */
     void                            **loc_conf;
 
+    /* 在接收完 HTTP 头部，第一次在业务上处理 HTTP 请求时，HTTP 框架提供的处理方法是 ngx_http_process_request。
+     * 但如果该方法无法一次处理完该请求的全部业务，在归还控制权到 epoll 事件模块后，该请求再次被回调时，将通过
+     * ngx_http_request_handler 方法来处理，而这个方法中对于可读事件的处理就是调用 read_event_handler 处理请求。
+     * 也就是说，HTTP 模块希望在底层处理请求的读事件时，重新实现 read_event_handler 方法 */
     ngx_http_event_handler_pt         read_event_handler;
+    /* 与 read_event_handler 回调方法类似，如果 ngx_http_request_handler 方法判断当前事件是写事件，则调用
+     * write_event_handler 处理请求 */
     ngx_http_event_handler_pt         write_event_handler;
 
 #if (NGX_HTTP_CACHE)
@@ -389,15 +413,26 @@ struct ngx_http_request_s {
     ngx_array_t                      *upstream_states;
                                          /* of ngx_http_upstream_state_t */
 
+    /* 表示这个请求的内存池，在 ngx_http_free_request 方法中销毁。它与 ngx_connection_t 中的内存池意义不同，当
+     * 请求释放时，TCP 连接可能并没有关闭，这时请求的内存池会销毁，但 ngx_connection_t 中的内存池并不会被销毁 */
     ngx_pool_t                       *pool;
+    /* 用于接收 HTTP 请求内容的缓冲区，主要用于接收 HTTP 头部 */
     ngx_buf_t                        *header_in;
 
+    /* ngx_http_process_request_headers 方法在接收、解析完 HTTP 请求的头部后，会把解析完的每一个 HTTP 头部加入
+     * 到 headers_in 的 headers 链表中，同时会构造 headers_in 中的其他成员 */
     ngx_http_headers_in_t             headers_in;
+    /* HTTP 模块会把想要发送的 HTTP 响应信息放到 headers_out 中，期望 HTTP 框架将 headers_out 中的成员序列化
+     * 为 HTTP 响应包发送给用户 */
     ngx_http_headers_out_t            headers_out;
 
+    /* 接收 HTTP 请求中包体的数据结构 */
     ngx_http_request_body_t          *request_body;
 
+    /* 延迟关闭连接的时间 */
     time_t                            lingering_time;
+    /* 当前请求初始化时的时间。start_sec 是格林威治时间(1970-1-1 0:0:0)但当前时间的秒数。如果这个请求是子请求，
+     * 则该时间是子请求的生成时间；如果这个请求是用户发来的请求，则是在建立起 TCP 连接后，第一次接收到可读事件时的时间 */
     time_t                            start_sec;
     ngx_msec_t                        start_msec;
 
@@ -414,15 +449,31 @@ struct ngx_http_request_s {
     ngx_str_t                         http_protocol;
     ngx_str_t                         schema;
 
+    /* 表示需要发送给客户端的 HTTP 响应。out 中保存着由 headers_out 中序列化后的表示 HTTP 头部的 TCP 流。在调用
+     * ngx_http_output_filter 方法后，out 中还会保存待发送的 HTTP 包体，它是实现异步发送 HTTP 响应的关键 */
     ngx_chain_t                      *out;
+    /* 当前请求既可能是用户发来的请求，也可能是派生出的子请求，而 main 则标识一系列相关的派生子请求的原始请求，我们
+     * 一般可通过 main 和当前请求的地址是否相等来判断当前请求是否为用户发来的原始请求 */
     ngx_http_request_t               *main;
+    /* 当前请求的父请求。注意，父请求未必是原始请求 */
     ngx_http_request_t               *parent;
     ngx_http_postponed_request_t     *postponed;
     ngx_http_post_subrequest_t       *post_subrequest;
+    /* 所有的子请求都是通过 posted_requests 这个单链表来链接起来的，执行 post 子请求时调用的 
+     * ngx_http_run_posted_requests 方法就是通过遍历该单链表来执行子请求的 */
     ngx_http_posted_request_t        *posted_requests;
 
+    /* 全局的 ngx_http_phase_engine_t 结构体中定义了一个 ngx_http_phase_handler_t 回调方法组成的数组，而 phase_handler
+     * 成员则与该数组配合使用，表示请求下次应当执行以 phase_handler 作为序号指定的数组中的回调方法。HTTP 框架正是以这种
+     * 方法把各个 HTTP 模块集成起来处理请求的 */
     ngx_int_t                         phase_handler;
+    /* 表示 NGX_HTTP_CONTENT_PHASE 阶段提供给 HTTP 模块处理请求的一种方式，content_handler 指向 HTTP 模块实现的请求处理方法
+     * 有些 HTTP 模块可能仅希望在这个处理请求内容的阶段，仅仅针对某种请求唯一生效，而不是对所有的请求生效。如，仅当请求
+     * 的 URI 匹配了配置文件中的某个 location 块时，再根据 location 块下的配置选择一个 HTTP 模块执行它的 handler 处理方法，
+     * 并以此替代 NGX_HTTP_CONTENT_PHASE 阶段的其他 handler 方法（这些 handler 方法对于该请求将得不到执行）*/
     ngx_http_handler_pt               content_handler;
+    /* 在 NGX_HTTP_ACCESS_PHASE 阶段需要判断请求是否具有访问权限时，通过 access_code 来传递 HTTP 模块的 handler 回调方法
+     * 的返回值，如果 access_code 为 0，则表示请求具备访问权限，反之则说明请求不具备访问权限 */
     ngx_uint_t                        access_code;
 
     /*
@@ -444,6 +495,7 @@ struct ngx_http_request_s {
     /* used to learn the Apache compatible response length without a header */
     size_t                            header_size;
 
+    /* HTTP 请求的全部长度，包括 HTTP 包体 */
     off_t                             request_length;
 
     ngx_uint_t                        err_status;
@@ -453,12 +505,20 @@ struct ngx_http_request_s {
 
     ngx_http_log_handler_pt           log_handler;
 
+    /* 在这个请求中如果打开了某些资源，并需要在请求结束时释放，那么都需要在把定义的释放资源方法添加
+     * 到 cleanup 成员中 */
     ngx_http_cleanup_t               *cleanup;
 
+    /* 表示当前请求的引用计数。如，在使用 subrequest 功能时，依附在这个请求上的子请求数目会返回到 count 上，
+     * 每增加一个子请求，count 数就加 1。其中任何一个子请求派生出新的子请求时，对应的原始请求(main 指针指向的请求)
+     * 的 count 值都要加 1。又如，当我们接收 HTTP 包体时，由于这也是一个异步调用，所以 count 上也需要加 1，这样在
+     * 结束请求时，就不会在 count 引用计数未清零时销毁请求 */
     unsigned                          count:16;
     unsigned                          subrequests:8;
+    /* 阻塞标志位，目前仅由 aio 使用 */
     unsigned                          blocked:8;
 
+    /* 标志位，为 1 时表示当前请求正在使用异步文件 IO */
     unsigned                          aio:1;
 
     unsigned                          http_state:4;
@@ -480,7 +540,10 @@ struct ngx_http_request_s {
     unsigned                          add_uri_to_alias:1;
     unsigned                          valid_location:1;
     unsigned                          valid_unparsed_uri:1;
+    /* 标志位，为 1 时表示 URL 发生过 rewrite 重写 */
     unsigned                          uri_changed:1;
+    /* 表示使用 rewrite 重写 URL 的次数。因为目前最多可以更改 10 次，所以 uri_changes 初始化为 11，
+     * 而每重写 URL 一次就把 uri_changes 减 1，一旦 uri_changes 等于 0，则向用户返回失败 */
     unsigned                          uri_changes:4;
 
     unsigned                          request_body_in_single_buf:1;
@@ -524,22 +587,30 @@ struct ngx_http_request_s {
     unsigned                          chunked:1;
     unsigned                          header_only:1;
     unsigned                          expect_trailers:1;
+    /* 标志位，为 1 时表示当前请求是 keepalive 请求 */
     unsigned                          keepalive:1;
+    /* 延迟关闭标志位，为 1 时表示需要延迟关闭。如，在接收完 HTTP 头部时如果发现还有包体存在，该标志位
+     * 会设为 1，而放弃接收包体时则会设为 0 */
     unsigned                          lingering_close:1;
+    /* 标志位，为 1 时表示正在丢弃 HTTP 请求中的包体 */
     unsigned                          discard_body:1;
     unsigned                          reading_body:1;
+    /* 标志位，为 1 时表示请求的当前状态是在做内部跳转 */
     unsigned                          internal:1;
     unsigned                          error_page:1;
     unsigned                          filter_finalize:1;
     unsigned                          post_action:1;
     unsigned                          request_complete:1;
     unsigned                          request_output:1;
+    /* 标志位，为 1 时表示发送给客户端的 HTTP 响应头部已经发送。在调用 ngx_http_send_header 方法
+     * 后，若已经成功地启动响应头部发送流程，该标志位就会置为 1，用来防止反复地发送头部 */
     unsigned                          header_sent:1;
     unsigned                          expect_tested:1;
     unsigned                          root_tested:1;
     unsigned                          done:1;
     unsigned                          logged:1;
 
+    /* 表示缓冲中是否有待发送内容的标志位 */
     unsigned                          buffered:4;
 
     unsigned                          main_filter_need_in_memory:1;
@@ -559,6 +630,7 @@ struct ngx_http_request_s {
 
     /* used to parse HTTP headers */
 
+    /* 状态机解析 HTTP 时使用 state 来表示当前的解析状态 */
     ngx_uint_t                        state;
 
     ngx_uint_t                        header_hash;

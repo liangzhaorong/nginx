@@ -1,3 +1,4 @@
+Y:\root\rongInternal\nginx\src\si
 
 /*
  * Copyright (C) Igor Sysoev
@@ -1183,6 +1184,7 @@ ngx_close_connection(ngx_connection_t *c)
         return;
     }
 
+    /* 将连接的读/写事件从定时器中取出 */
     if (c->read->timer_set) {
         ngx_del_timer(c->read);
     }
@@ -1191,6 +1193,7 @@ ngx_close_connection(ngx_connection_t *c)
         ngx_del_timer(c->write);
     }
 
+    /* 将读/写事件从 epoll 中移除 */
     if (!c->shared) {
         if (ngx_del_conn) {
             ngx_del_conn(c, NGX_CLOSE_EVENT);
@@ -1221,6 +1224,8 @@ ngx_close_connection(ngx_connection_t *c)
 
     log_error = c->log_error;
 
+    /* 将连接的 ngx_connection_t 结构体归还给 ngx_cycle_t 核心结构体
+     * 的空闲连接池 free_connections */
     ngx_free_connection(c);
 
     fd = c->fd;
@@ -1230,6 +1235,7 @@ ngx_close_connection(ngx_connection_t *c)
         return;
     }
 
+    /* 关闭该 TCP 连接套接字 */
     if (ngx_close_socket(fd) == -1) {
 
         err = ngx_socket_errno;

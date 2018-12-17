@@ -494,6 +494,7 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
 
             break;
 
+        /* 任何 HTTP 模块都不可以向该阶段添加处理方法 */
         case NGX_HTTP_FIND_CONFIG_PHASE:
             find_config_index = n;
 

@@ -106,46 +106,80 @@ typedef struct {
 
 
 typedef enum {
+    /* 在接收到完整的 HTTP 头部后处理的 HTTP 阶段 */
     NGX_HTTP_POST_READ_PHASE = 0,
 
+    /* 在将请求的 URI 与 location 表达式匹配前，修改请求的 URI（所谓的重定向）是一个独立的 HTTP 阶段 */
     NGX_HTTP_SERVER_REWRITE_PHASE,
 
+    /* 根据请求的 URI 寻找匹配的 location 表达式，这个阶段只能由 ngx_http_core_module 模块实现，不建议其他 HTTP 
+     * 模块重新定义这一阶段的行为 */
     NGX_HTTP_FIND_CONFIG_PHASE,
+    /* 在 NGX_HTTP_FIND_CONFIG_PHASE 阶段寻找到匹配的 location 之后再修改请求的 URI */
     NGX_HTTP_REWRITE_PHASE,
+    /* 这一阶段是用于在 rewrite 重写 URL 后，防止错误的 nginx.conf 配置导致死循环（递归的修改 URI），因此，
+     * 这一阶段仅由 ngx_http_core_module 模块处理。目前，控制死循环的方式很简单，首先检查 rewrite 的次数，
+     * 如果一个请求超过 10 次重定向，就认为进入了 rewrite 死循环，这时在 NGX_HTTP_POST_REWRITE_PHASE 阶段
+     * 就会向用户返回 500，表示服务器内部错误 */
     NGX_HTTP_POST_REWRITE_PHASE,
 
+    /* 表示在处理 NGX_HTTP_ACCESS_PHASE 阶段决定请求的访问权限前，HTTP 模块可以介入的处理阶段 */
     NGX_HTTP_PREACCESS_PHASE,
 
+    /* 这个阶段用于让 HTTP 模块判断是否允许这个请求访问 Nginx 服务器 */
     NGX_HTTP_ACCESS_PHASE,
+    /* 在 NGX_HTTP_ACCESS_PHASE 阶段中，当 HTTP 模块的 handler 处理函数返回不允许访问的错误码时（实际就是
+     * NGX_HTTP_FORBIDDEN 或者 NGX_HTTP_UNAUTHORIZED），这里将负责向用户发送拒绝服务的错误响应。因此，这个阶段
+     * 实际上用于给 NGX_HTTP_ACCESS_PHASE 阶段收尾 */
     NGX_HTTP_POST_ACCESS_PHASE,
 
     NGX_HTTP_PRECONTENT_PHASE,
 
+    /* 用于处理 HTTP 请求内容的阶段，这是大部分 HTTP 模块最愿意介入的阶段 */
     NGX_HTTP_CONTENT_PHASE,
 
+    /* 处理完请求后记录日志的阶段。例如，ngx_http_log_module 模块就在这个阶段加入了一个 handler 处理方法，使得
+     * 每个 HTTP 请求处理完毕后会记录 access_log 访问日志 */
     NGX_HTTP_LOG_PHASE
 } ngx_http_phases;
 
 typedef struct ngx_http_phase_handler_s  ngx_http_phase_handler_t;
 
+/* 一个 HTTP 处理阶段中的 checker 检查方法，仅可以由 HTTP 框架实现，以此控制 HTTP 请求的处理流程 */
 typedef ngx_int_t (*ngx_http_phase_handler_pt)(ngx_http_request_t *r,
     ngx_http_phase_handler_t *ph);
 
+/* 注：该 ngx_http_phase_handler_t 结构体仅表示处理阶段中的一个处理方法 */
 struct ngx_http_phase_handler_s {
+    /* 在处理到某一个 HTTP 阶段时，HTTP 框架将会在 checker 方法已实现的前提下首先调用 checker 方法来处理请求，而不会
+     * 直接调用任何阶段中的 handler 方法，只有在 checker 方法中才会调用 handler 方法。因此，事实上所有的 checker 方法
+     * 都是由框架中的 ngx_http_core_module 模块实现的，且普通的 HTTP 模块无法重定义 checker 方法 */
     ngx_http_phase_handler_pt  checker;
+    /* 除 ngx_http_core_module 模块以外的 HTTP 模块，只能通过定义 handler 方法才能介入某一个 HTTP 处理阶段
+     * 以处理请求 */
     ngx_http_handler_pt        handler;
+    /* 将要执行的下一个 HTTP 处理阶段的序号
+     * next 的设计使得处理阶段不必按顺序依次执行，既可以向后跳跃数个阶段继续执行，也可以跳跃到之前曾经执行过的某个
+     * 阶段重新执行。通常，next 表示下一个阶段中的第 1 个 ngx_http_phase_handler_t 处理方法 */
     ngx_uint_t                 next;
 };
 
 
 typedef struct {
+    /* handlers 是由 ngx_http_phase_handler_t 构成的数组首地址，它表示一个请求可能经历的所有 
+     * ngx_http_handler_pt 处理方法 */
     ngx_http_phase_handler_t  *handlers;
+    /* 表示 NGX_HTTP_SERVER_REWRITE_PAHSE 阶段第 1 个 ngx_http_phase_handler_t 处理方法在 handlers 数组中的序号，
+     * 用于在执行 HTTP 请求的任何阶段中快速跳转到 NGX_HTTP_SERVER_REWRTIE_PAHSE 阶段处理请求 */
     ngx_uint_t                 server_rewrite_index;
+    /* 表示 NGX_HTTP_REWRITE_PHASE 阶段第 1 个 ngx_http_phase_handler_t 处理方法在 handlers 数组中的序号，
+     * 用于在执行 HTTP 请求的任何阶段中快速跳转到 NGX_HTTP_REWRITE_PHASE 阶段处理请求 */
     ngx_uint_t                 location_rewrite_index;
 } ngx_http_phase_engine_t;
 
 
 typedef struct {
+    /* handlers 动态数组保存着每一个 HTTP 模块初始化时添加到当前阶段的处理方法 */
     ngx_array_t                handlers;
 } ngx_http_phase_t;
 
@@ -153,6 +187,7 @@ typedef struct {
 typedef struct {
     ngx_array_t                servers;         /* ngx_http_core_srv_conf_t */
 
+    /* 有下面各阶段处理方法构成的 phases 数组构建的阶段引擎才是流水式处理 HTTP 请求的实际数据结构 */
     ngx_http_phase_engine_t    phase_engine;
 
     ngx_hash_t                 headers_in_hash;
@@ -186,6 +221,9 @@ typedef struct {
 
     ngx_array_t               *ports;
 
+    /* 用于在 HTTP 框架初始化时帮助各个 HTTP 模块在任意阶段中添加 HTTP 处理方法，它是一个有 11 个成员的 
+     * ngx_http_phase_t 数组，其中每一个 ngx_http_phase_t 结构体对应一个 HTTP 阶段。在 HTTP 框架初始化
+     * 完毕后，运行过程中的 phases 数组是无用的 */
     ngx_http_phase_t           phases[NGX_HTTP_LOG_PHASE + 1];
 } ngx_http_core_main_conf_t;
 
@@ -204,6 +242,7 @@ typedef struct {
 
     size_t                      connection_pool_size;
     size_t                      request_pool_size;
+    /* 对应client_header_buffer_size指令 */
     size_t                      client_header_buffer_size;
 
     ngx_bufs_t                  large_client_header_buffers;
