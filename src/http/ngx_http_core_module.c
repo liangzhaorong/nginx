@@ -818,7 +818,7 @@ ngx_http_handler(ngx_http_request_t *r)
 
     r->connection->log->action = NULL;
 
-    /* 若 internal 为 0，表示不需要重定向(如刚开始处理请求时) */
+    /* 若 internal 为 0，表示不需要做内部重定向(如刚开始处理请求时) */
     if (!r->internal) {
         switch (r->headers_in.connection_type) {
         case 0:
@@ -858,6 +858,7 @@ ngx_http_handler(ngx_http_request_t *r)
 
     /* 设置请求的 write_event_handler 方法 */
     r->write_event_handler = ngx_http_core_run_phases;
+    /* 开始进入 HTTP 的 11 个处理阶段 */
     ngx_http_core_run_phases(r);
 }
 
@@ -1211,6 +1212,13 @@ ngx_http_core_post_access_phase(ngx_http_request_t *r,
 }
 
 
+/**
+ * 介入 NGX_HTTP_CONTENT_PHASE 阶段的两种方式:
+ * 1. 通过全局的 ngx_http_core_main_conf_t 结构体的 phases 数组中添加
+ *    ngx_http_handler_pt 处理方法来实现
+ * 2. 把希望处理请求的 ngx_http_handler_pt 方法设置到 location 相关的
+ *    ngx_http_core_loc_conf_t 结构体的 handler 指针中
+ */
 ngx_int_t
 ngx_http_core_content_phase(ngx_http_request_t *r,
     ngx_http_phase_handler_t *ph)

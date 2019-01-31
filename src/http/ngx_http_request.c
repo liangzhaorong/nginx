@@ -1061,6 +1061,7 @@ ngx_http_process_request_line(ngx_event_t *rev)
 
             c->log->action = "reading client request headers";
 
+            /* 重新设置当前连接读事件的 handler 为 ngx_http_process_request_headers */
             rev->handler = ngx_http_process_request_headers;
             /* 上面读取请求行成功后，开始读取请求头 */
             ngx_http_process_request_headers(rev);
@@ -1378,7 +1379,7 @@ ngx_http_process_request_headers(ngx_event_t *rev)
             continue;
         }
 
-        /* 读取完所有的请求头后，开始处理请求 */
+        /* 读取并解析完所有的请求头后，开始处理请求 */
         if (rc == NGX_HTTP_PARSE_HEADER_DONE) {
 
             /* a whole header has been parsed successfully */

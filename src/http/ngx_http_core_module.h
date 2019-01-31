@@ -123,7 +123,8 @@ typedef enum {
      * 就会向用户返回 500，表示服务器内部错误 */
     NGX_HTTP_POST_REWRITE_PHASE,
 
-    /* 表示在处理 NGX_HTTP_ACCESS_PHASE 阶段决定请求的访问权限前，HTTP 模块可以介入的处理阶段 */
+    /* 表示在处理 NGX_HTTP_ACCESS_PHASE 阶段决定请求的访问权限前，HTTP 模块可以介入的处理阶段
+     * 一般用于对当前请求进行限制性处理 */
     NGX_HTTP_PREACCESS_PHASE,
 
     /* 这个阶段用于让 HTTP 模块判断是否允许这个请求访问 Nginx 服务器 */

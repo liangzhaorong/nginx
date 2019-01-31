@@ -514,6 +514,8 @@ ngx_http_init_phase_handlers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
 
         case NGX_HTTP_POST_REWRITE_PHASE:
             if (use_rewrite) {
+                // 检查 rewrite 重写的 URL 的次数不可以超过 10 次，以此防止由于 rewrite
+                // 死循环而造成整个 Nginx 服务都不可用
                 ph->checker = ngx_http_core_post_rewrite_phase;
                 ph->next = find_config_index;
                 n++;

@@ -517,26 +517,36 @@ ngx_http_realip_add_variables(ngx_conf_t *cf)
 }
 
 
+// 该方法实际就是 postconfiguration 接口的实现
 static ngx_int_t
 ngx_http_realip_init(ngx_conf_t *cf)
 {
     ngx_http_handler_pt        *h;
     ngx_http_core_main_conf_t  *cmcf;
 
+    // 首先获取全局的 ngx_http_core_main_conf_t 结构体
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
+    /* phases 数组中有 11 个成员，取出 NGX_HTTP_POST_READ_PHASE 阶段的 handlers 动态数组，
+     * 向其中添加 ngx_http_handler_pt 处理方法，这样 ngx_http_realip_module 模块就介入 HTTP
+     * 请求的 NGX_HTTP_POST_READ_PHASE 处理阶段了 */
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_POST_READ_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
 
+    /* ngx_http_realip_handler 方法就是实现了 ngx_http_handler_pt 接口的方法 */
     *h = ngx_http_realip_handler;
 
+    /* 同一个HTTP模块的同一个ngx_http_realip_handler方法，完全可以设置到两个不同的阶段中。
+     * 如，phases[NGX_HTTP_PREACCESS_PHASE]动态数组中也添加了ngx_http_realip_handler方法 */
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
 
+    /* ngx_http_realip_handler处理方法同时介入了NGX_HTTP_POST_READ_PHASE和NGX_HTTP_PREACCESS_PHASE
+     * 这两个HTTP处理阶段 */
     *h = ngx_http_realip_handler;
 
     return NGX_OK;
