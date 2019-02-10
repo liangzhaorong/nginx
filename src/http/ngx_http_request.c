@@ -2307,6 +2307,7 @@ ngx_http_run_posted_requests(ngx_connection_t *c)
         /* 将原始请求的 posted_requests 指针指向链表的下一个 post 请求 */
         r->main->posted_requests = pr->next;
 
+        /* 获取当前待处理的子请求 */
         r = pr->request;
 
         ngx_http_set_log_request(c->log, r);

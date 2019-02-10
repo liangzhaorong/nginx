@@ -301,11 +301,13 @@ typedef struct {
     ngx_buf_t                        *buf;
     /* 根据 content-length 头部和已接收到的包体长度，计算出的还需要接收的包体长度 */
     off_t                             rest;
+    /* 已接收到的包体长度 */
     off_t                             received;
     ngx_chain_t                      *free;
     ngx_chain_t                      *busy;
     ngx_http_chunked_t               *chunked;
-    /* HTTP 包体接收完毕后的回调方法 */
+    /* HTTP 包体接收完毕后的回调方法，也就是 ngx_http_read_client_request_body 方法
+     * 传递的第二个参数 */
     ngx_http_client_body_handler_pt   post_handler;
 } ngx_http_request_body_t;
 

@@ -150,88 +150,179 @@ typedef struct {
      * 结构体才会生效，它会定义上游服务器的配置 */
     ngx_http_upstream_srv_conf_t    *upstream;
 
-    /* 建立 TCP 连接的超时时间，实际上就是写事件添加到定时器中时设置的超时时间 */
+    /* proxy_connect_timeout 指令
+     * 建立 TCP 连接的超时时间，实际上就是写事件添加到定时器中时设置的超时时间 */
     ngx_msec_t                       connect_timeout;
-    /* 发送请求的超时时间。通常就是写事件添加到定时器中设置的超时时间 */
+    /* proxy_send_timeout 指令
+     * 发送请求的超时时间。通常就是写事件添加到定时器中设置的超时时间 */
     ngx_msec_t                       send_timeout;
-    /* 接收响应的超时时间。通常就是读事件添加到定时器中设置的超时时间 */
+    /* proxy_read_timeout 指令
+     * 接收响应的超时时间。通常就是读事件添加到定时器中设置的超时时间 */
     ngx_msec_t                       read_timeout;
-    /* 向下一个服务器发出请求之前经过的时间 */
+    /* proxy_next_upstream_timeout 指令
+     * 向下一个服务器发出请求之前经过的时间 */
     ngx_msec_t                       next_upstream_timeout;
 
-    /* TCP 的 SO_SNOLOWAT 选项，表示发送缓冲区的下限 */
+    /* proxy_send_lowat 指令
+     * TCP 的 SO_SNOLOWAT 选项，表示发送缓冲区的下限 */
     size_t                           send_lowat;
-    /* 定义了接收头部的缓冲区分配的内存大小（ngx_http_upstream_t 中的 buffer 缓冲区），当
-     * 不转发响应给下游或者 buffering 标志位为 0 的情况下转发响应时，它同样表示接收包体的
+    /* proxy_buffer_size 指令
+     * 定义了接收响应头部的缓冲区分配的内存大小（ngx_http_upstream_t 中的 buffer 缓冲区），
+     * 当不转发响应给下游或者 buffering 标志位为 0 的情况下转发响应时，它同样表示接收包体的
      * 缓冲区大小 */
     size_t                           buffer_size;
+    /* proxy_limit_rate 指令 */
     size_t                           limit_rate;
 
+    /* 仅当 buffering 标志位为 1，并且向下游转发响应时生效。它会设置到 
+     * ngx_event_pipe_t 结构体的 busy_size 成员中 */
     size_t                           busy_buffers_size;
+    /* 在 buffering 标志位为 1 时，如果上游速度快于下游速度，将有可能把来自上游的响应
+     * 存储到临时文件中，而 max_temp_file_size 指定了临时文件的最大长度。实际上，它将限制
+     * ngx_event_pipe_t 结构体中 temp_file */
     size_t                           max_temp_file_size;
+    /* 表示将缓冲区中的响应写入临时文件时一次写入字符流的最大长度 */
     size_t                           temp_file_write_size;
 
+    /* proxy_busy_buffers_size 指令 */
     size_t                           busy_buffers_size_conf;
+    /* proxy_max_temp_file_size 指令 */
     size_t                           max_temp_file_size_conf;
     size_t                           temp_file_write_size_conf;
 
+    /* proxy_buffers 指令
+     * 以缓存响应的方式转发上游服务器的包体时所使用的内存大小 */
     ngx_bufs_t                       bufs;
 
+    /* 针对 ngx_http_upstream_t 结构体中保存解析完的包头的 headers_in 成员，ignore_headers
+     * 可以按照二进制位使得 upstream 在转发包头时跳过对某些头部的处理。目前有如下设置:
+     * #define NGX_HTTP_UPSTREAM_IGN_XA_REDIRECT    0x00000002
+     * #define NGX_HTTP_UPSTREAM_IGN_XA_EXPIRES     0x00000004
+     * #define NGX_HTTP_UPSTREAM_IGN_EXPIRES        0x00000008
+     * #define NGX_HTTP_UPSTREAM_IGN_CACHE_CONTROL  0x00000010
+     * #define NGX_HTTP_UPSTREAM_IGN_SET_COOKIE     0x00000020
+     * #define NGX_HTTP_UPSTREAM_IGN_XA_LIMIT_RATE  0x00000040
+     * #define NGX_HTTP_UPSTREAM_IGN_XA_BUFFERING   0x00000080
+     * #define NGX_HTTP_UPSTREAM_IGN_XA_CHARSET     0x00000100
+     * #define NGX_HTTP_UPSTREAM_IGN_VARY           0x00000200 */
     ngx_uint_t                       ignore_headers;
+    /* proxy_next_upstream 指令
+     * 以二进制位来表示一些错误码，如果处理上游响应时发现这些错误码，那么在没有
+     * 将响应转发给下游客户端时，将会选择下一个上游服务器来重发请求 */
     ngx_uint_t                       next_upstream;
+    /* 在 buffering 标志位为 1 的情况下转发响应时，将有可能把响应存放到临时文件中。
+     * 在 ngx_http_upstream_t 中的 store 标志位为 1 时，store_access 表示所创建
+     * 的目录、文件的权限 */
     ngx_uint_t                       store_access;
+    /* proxy_next_upstream_tries 指令 */
     ngx_uint_t                       next_upstream_tries;
+    /* proxy_buffering 指令
+     * 决定转发响应方式的标志位，buffering 为 1 时表示打开缓存，这时认为上游的网速
+     * 快于下游的网速，会尽量地在内存或者磁盘中缓存来自上游的响应；如果 buffering
+     * 为 0，仅会开辟一块固定大小的内存块作为缓存来转发响应 */
     ngx_flag_t                       buffering;
+    /* proxy_request_buffering 指令 */
     ngx_flag_t                       request_buffering;
+    /* proxy_pass_request_headers 指令 */
     ngx_flag_t                       pass_request_headers;
+    /* proxy_pass_request_body 指令 */
     ngx_flag_t                       pass_request_body;
 
+    /* proxy_ignore_client_abort 指令
+     * 标志位，为 1 时表示与上游服务器交互时将不检查 Nginx 与下游客户端间的连接是否
+     * 断开。也就是说，即使下游客户端主动关闭了连接，也不会中断与上游服务器间的交互 */
     ngx_flag_t                       ignore_client_abort;
+    /* proxy_intercept_errors 指令
+     * 当解析上游响应的包头时，如果解析后设置到 headers_in 结构体中的 status_n 错误码
+     * 大于 400，则会试图把它与 error_page 中指定的错误码相匹配，如果匹配上，则发送
+     * error_page 中指定的响应，否则继续返回上游服务器的错误码 */
     ngx_flag_t                       intercept_errors;
+    /* buffering 标志位为 1 的情况下转发响应时才有意义。这时，如果 cycli_temp_file 为 1，
+     * 则会复用临时文件中已经使用过的空间。不建议将cycli_temp_file 设为 1 */
     ngx_flag_t                       cyclic_temp_file;
+    /* proxy_force_ranges 指令 */
     ngx_flag_t                       force_ranges;
 
+    /* proxy_temp_path 指令
+     * 在 buffering 标志位为 1 的情况下转发响应时，存放临时文件的路径 */
     ngx_path_t                      *temp_path;
 
+    /* 不转发的头部。实际上是通过 ngx_http_upstream_hide_headers_hash 方法，根据
+     * hide_headers 和 pass_headers 动态数组构造出的需要隐藏的 HTTP 头部散列表 */
     ngx_hash_t                       hide_headers_hash;
+    /* proxy_hide_header 指令
+     * 当转发上游响应头部(ngx_http_upstream_t 中 headers_in 结构体中的头部)给下游客户端时，
+     * 如果不希望某些头部转发给下游，就设置到 hide_headers 动态数组中 */
     ngx_array_t                     *hide_headers;
+    /* proxy_pass_header 指令
+     * 当转发上游响应头部(ngx_http_upstream_t 中 headers_in 结构体中的头部)给下游客户端时，
+     * upstream 机制默认不会转发如 "Date"、"Server" 之类的头部，如果确实希望直接转发它们到
+     * 下游，就设置到 pass_headers 动态数组中 */
     ngx_array_t                     *pass_headers;
 
+    /* proxy_bind 指令.
+     * 连接上游服务器时使用的本机地址 */
     ngx_http_upstream_local_t       *local;
+    /* proxy_socket_keepalive 指令 */
     ngx_flag_t                       socket_keepalive;
 
 #if (NGX_HTTP_CACHE)
+    /* proxy_cache 指令定义的共享内存区域 */
     ngx_shm_zone_t                  *cache_zone;
     ngx_http_complex_value_t        *cache_value;
 
+    /* proxy_cache_min_uses 指令，默认请求 1 次将会被缓存 */
     ngx_uint_t                       cache_min_uses;
+    /* proxy_cache_use_stale 指令 */
     ngx_uint_t                       cache_use_stale;
+    /* proxy_cache_methods 指令，指定缓存特定的方法，默认缓存"GET"和"HEAD" */
     ngx_uint_t                       cache_methods;
 
+    /* proxy_cache_max_range_offset 指令 */
     off_t                            cache_max_range_offset;
 
+    /* proxy_cache_lock 指令 */
     ngx_flag_t                       cache_lock;
+    /* proxy_cache_lock_timeout 指令 */
     ngx_msec_t                       cache_lock_timeout;
+    /* proxy_cache_lock_age 指令 */
     ngx_msec_t                       cache_lock_age;
 
+    /* proxy_cache_revalidate 指令 */
     ngx_flag_t                       cache_revalidate;
+    /* proxy_cache_convert_head 指令 */
     ngx_flag_t                       cache_convert_head;
+    /* proxy_cache_background_update 指令 */
     ngx_flag_t                       cache_background_update;
 
     ngx_array_t                     *cache_valid;
+    /* proxy_cache_bypass 指令 */
     ngx_array_t                     *cache_bypass;
+    /* proxy_cache_purge 指令 */
     ngx_array_t                     *cache_purge;
     ngx_array_t                     *no_cache;
 #endif
 
+    /* 当 ngx_http_upstream_t 中的 store 标志位为 1 时，如果需要将上游的响应存放到文件中，
+     * store_lengths 将表示存放路径的长度，而 store_values 表示存放路径 */
     ngx_array_t                     *store_lengths;
     ngx_array_t                     *store_values;
 
 #if (NGX_HTTP_CACHE)
+    /* proxy_cache 指令 */
     signed                           cache:2;
 #endif
+    /* store 标志位的意义与 ngx_http_upstream_t 中的 store 相同 */
     signed                           store:2;
+    /* 上面的 intercept_errors 标志位定义了 400 以上的错误码将会与 error_page 比较后
+     * 再行处理，实际上这个规则是可以有一个例外情况的，如果将 intercept_404 标志位
+     * 设为 1，当上游响应 404 时会直接转发这个错误码给下游，而不会去与 error_page
+     * 进行比较 */
     unsigned                         intercept_404:1;
+    /* 当该标志位为 1 时，将会根据 ngx_http_upstream_t 中 headers_in 结构体里的 X-Accel-Buffering
+     * 头部(它的值会是 yes 和 no)来改变 buffering 标志位，当其值为 yes 时，buffering 标志位为 1。
+     * 因此，change_buffering 为 1 时将有可能根据上游服务器返回的响应头部，动态地决定是以上游网速
+     * 优先还是以下游网速优先 */
     unsigned                         change_buffering:1;
     unsigned                         pass_trailers:1;
     unsigned                         preserve_output:1;
@@ -240,11 +331,15 @@ typedef struct {
     ngx_ssl_t                       *ssl;
     ngx_flag_t                       ssl_session_reuse;
 
+    /* proxy_ssl_name 指令 */
     ngx_http_complex_value_t        *ssl_name;
+    /* proxy_ssl_server_name 指令 */
     ngx_flag_t                       ssl_server_name;
+    /* proxy_ssl_verify 指令 */
     ngx_flag_t                       ssl_verify;
 #endif
 
+    /* 使用 upstream 的模块名称，仅用于记录日志 */
     ngx_str_t                        module;
 
     NGX_COMPAT_BEGIN(2)

@@ -11,6 +11,7 @@
 
 
 typedef struct {
+    /* proxy_cache_path 指令 */
     ngx_array_t                    caches;  /* ngx_http_file_cache_t * */
 } ngx_http_proxy_main_conf_t;
 
@@ -58,12 +59,14 @@ typedef struct {
     ngx_array_t                   *body_flushes;
     ngx_array_t                   *body_lengths;
     ngx_array_t                   *body_values;
+    /* proxy_set_body 指令 */
     ngx_str_t                      body_source;
 
     ngx_http_proxy_headers_t       headers;
 #if (NGX_HTTP_CACHE)
     ngx_http_proxy_headers_t       headers_cache;
 #endif
+    /* proxy_set_header 指令 */
     ngx_array_t                   *headers_source;
 
     ngx_array_t                   *proxy_lengths;
@@ -73,11 +76,13 @@ typedef struct {
     ngx_array_t                   *cookie_domains;
     ngx_array_t                   *cookie_paths;
 
+    /* proxy_method 指令 */
     ngx_http_complex_value_t      *method;
     ngx_str_t                      location;
     ngx_str_t                      url;
 
 #if (NGX_HTTP_CACHE)
+    /* proxy_cache_key 指令定义的缓存 key */
     ngx_http_complex_value_t       cache_key;
 #endif
 
@@ -85,18 +90,25 @@ typedef struct {
 
     ngx_flag_t                     redirect;
 
+    /* proxy_http_version 指令 */
     ngx_uint_t                     http_version;
 
+    /* proxy_headers_hash_max_size 指令 */
     ngx_uint_t                     headers_hash_max_size;
+    /* proxy_headers_hash_bucket_size 指令 */
     ngx_uint_t                     headers_hash_bucket_size;
 
 #if (NGX_HTTP_SSL)
     ngx_uint_t                     ssl;
     ngx_uint_t                     ssl_protocols;
+    /* proxy_ssl_ciphers 指令 */
     ngx_str_t                      ssl_ciphers;
+    /* proxy_ssl_verify_depth 指令 */
     ngx_uint_t                     ssl_verify_depth;
     ngx_str_t                      ssl_trusted_certificate;
+    /* proxy_ssl_crl 指令 */
     ngx_str_t                      ssl_crl;
+    /* proxy_ssl_certificate 指令 */
     ngx_str_t                      ssl_certificate;
     ngx_str_t                      ssl_certificate_key;
     ngx_array_t                   *ssl_passwords;
@@ -254,6 +266,47 @@ ngx_module_t  ngx_http_proxy_module;
 
 static ngx_command_t  ngx_http_proxy_commands[] = {
 
+      /* Syntax:  proxy_pass URL;
+       * Default: —
+       * Context: location, if in location, limit_except
+       *
+       * 设置代理服务器的协议和地址，以及应映射位置的可选 URI。作为协议，可以指定
+       * "http" 或 "https"。地址可以指定为域名或 IP 地址，以及可选端口：
+       *     proxy_pass http://localhost:8000/uri/;
+       * 或者可以作为在 "unix" 之后指定并用冒号括起来的 UNIX 域套接字路径：
+       *     proxy_pass http://unix:/tmp/backend.socket:/uri/;
+       *
+       * 如果域名解析为多个地址，则所有这些地址都将以 round-robin(轮询)方式使用。此外，可以将
+       * 地址指定服务器组(参见 ngx_http_upstream_module 模块).
+       *
+       * 请求 URI 按如下方式传递给服务器：
+       * - 如果 proxy_pass 指令使用 URI 指定，那么当请求传递到服务器时，与该 location 匹配的
+       *   规范化请求 URI 的部分将被指令中指定的 URI 替换：
+       *   location /name/ {
+       *       proxy_pass http://127.0.0.1/remote/;
+       *   }
+       * 
+       * - 如果 proxy_pass 没有使用 URI 进行指定，则请求 URI 将以与处理原始请求时客户端发送的
+       *   格式相同的形式传递给服务器，或者在处理更改的 URI 时传递完整的规范化请求 URI:
+       *   location /some/path/ {
+       *       proxy_pass http://127.0.0.1;
+       *   }
+       *
+       * 在某些情况下，无法确定要替换的部分请求 URI：
+       * - location 使用正则表达式指定，且是在命名 location 内。在这些情况下，应该不使用 URI 来
+       *   指定 proxy_pass。
+       * - 使用 rewrite 指令在代理位置内更改 URI 时，将使用相同的配置来处理请求(break):
+       *   location /name/ {
+       *       rewrite    /name/([^/]+) /users?name=$1 break;
+       *       proxy_pass http://127.0.0.1;
+       *   }
+       *   在这种情况下，将忽略指令中指定的 URI，并将完整更改的请求 URI 传递给服务器.
+       * - 在 proxy_pass 中使用变量时：
+       *   location /name/ {
+       *       proxy_pass http://127.0.0.1$request_uri;
+       *   }
+       *   在这种情况下，如果在指令中指定了 URI，则将其原样传递给服务器，替换原始请求 URI.
+       */
     { ngx_string("proxy_pass"),
       NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_HTTP_LMT_CONF|NGX_CONF_TAKE1,
       ngx_http_proxy_pass,
@@ -261,6 +314,59 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  proxy_redirect default;
+       *          proxy_redirect off;
+       *          proxy_redirect redirect replacement;
+       * Default: proxy_redirect default;
+       * Context: http, server, location 
+       *
+       * 设置应在代理服务器响应的 "Location"头 和 "Refresh" 头字段中更改的文本。假设
+       * 代理服务器返回头 "Location: http://localhost:8000/two/some/uri/"。指令：
+       *     proxy_redirect http://localhost:8000/two/ http://frontend/one/;
+       * 将重写该字符串为 "Location: http://frontend/one/some/uri/".
+       * replacement 字符串中可能省略了服务器名称: 
+       *     proxy_redirect http://localhost:8000/two/ /;
+       * 如果与 80 端口不同，则将插入主服务器名称和端口。
+       *
+       * 由 default 参数指定的默认替换使用 location 和 proxy_pass 指令的参数(proxy_pass -> location)。
+       * 因此，如下两个配置是等效的：
+       *   location /one/ {
+       *       proxy_pass     http://upstream:port/two/;
+       *       proxy_redirect default;
+       *   }
+       *
+       *   location /one/ {
+       *       proxy_pass     http://upstream:port/two/;
+       *       proxy_redirect http://upstream:port/two/ /one/;
+       *
+       * 如果 proxy_pass 使用了变量指定，则不允许使用 default 参数.
+       *
+       * replacement 字符串可以包含变量：
+       *   proxy_redirect http://localhost:8000/ http://$host:$server_port/;
+       *
+       * redirect 也可以包含变量：
+       *   proxy_redirect http://$proxy_host:8000/ /;
+       *
+       * 该指令也可以使用正则表达式指定。在这种情况下，redirect 应该以 "~" 符号开头(大小写敏感
+       * 匹配)，或者以 "~*" 开头(大小写不敏感匹配)。正则表达式可以包含名称和位置捕获，replacement
+       * 可以应用它们：
+       *   proxy_redirect ~^(http://[^:]+):\d+(/.+)$ $1$2;
+       *   proxy_redirect ~*\/user/([^/]+)/(.+)$      http://$1.example.com/$2;
+       *
+       * 可以有多个 proxy_redirect 指令:
+       *   proxy_redirect default;
+       *   proxy_redirect http://localhost:8000/  /;
+       *   proxy_redirect http://www.example.com/ /;
+       * 
+       * off 参数取消所有 proxy_redirect 指令对当前级别的影响：
+       *   proxy_redirect off;
+       *   proxy_redirect default;
+       *   proxy_redirect http://localhost:8000/  /;
+       *   proxy_redirect http://www.example.com/ /;
+       *
+       * 使用该指令，还可以将 host 名添加到代理服务器发出的相对重定向：
+       *   proxy_redirect / /;
+       */
     { ngx_string("proxy_redirect"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
       ngx_http_proxy_redirect,
@@ -268,6 +374,34 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  proxy_cookie_domain off;
+       *          proxy_cookie_domain domain replacement;
+       * Default: proxy_cookie_domain off;
+       * Context: http, server, location
+       *
+       * 设置将代理服务器响应的 "Set-Cookie" 头的 domain 属性改变为一个文本。假设代理服务器
+       * 返回的 "Set-Cookie" 头带有 "domain=localhost" 属性。指令：
+       *     proxy_cookie_domain localhost example.org;
+       * 将重写该属性为 "domain=example.org".
+       * 
+       * 以点开始的 domain 和 replacement 字符串，以及 domain 属性是被忽略的。匹配是忽略大小写的.
+       *
+       * domain 和 replacement 字符串可以包含变量：
+       *     proxy_cookie_domain www.$host $host;
+       * 
+       * 该指令也可以使用正则表达式指定。在这种情况下，domain 应该以 "~" 符号开始。一个正则表达式
+       * 可以包含 named 和 position 捕获，replacement 可以引用它们：
+       *     proxy_cookie_domain ~\.(?P<sl_domain>[-0-9a-z]+\.[a-z]+)$ $sl_domain;
+       *
+       * 可以有多个 proxy_cookie_domain 指令：
+       *     proxy_cookie_domain localhost example.org;
+       *     proxy_cookie_domain ~\.([a-z]+\.[a-z]+)$ $1;
+       * 
+       * off 参数取消了所有 proxy_cookie_domain 指令在当前级别的影响：
+       *     proxy_cookie_domain off;
+       *     proxy_cookie_domain localhost example.org;
+       *     proxy_cookie_domain www.example.org example.org;
+       */
     { ngx_string("proxy_cookie_domain"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
       ngx_http_proxy_cookie_domain,
@@ -275,6 +409,33 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  proxy_cookie_path off;
+       *          proxy_cookie_path path replacement;
+       * Default: proxy_cookie_path off;
+       * Context: http, server, location
+       *
+       * 设置在代理服务器响应 "Set-Cookie" 头中的 path 属性被改变的文本。假设代理服务器返回的
+       * "Set-Cookie" 头带有属性 "path=/two/some/uri/"。指令：
+       *     proxy_cookie_path /two/ /;
+       * 则该属性将被重写为 "path=/some/uri/".
+       *
+       * path 和 replacement 字符串可以包含变量：
+       *     proxy_cookie_path $uri /some$uri;
+       *
+       * 该指令也可以指定使用正则表达式。在这种情况下，path 不是以 "~" 符号开头并且大小写敏感匹配，
+       * 就是以 "*" 符号开头且大小写不敏感匹配。正则表达式可以包含 named 和 positional 捕获，且
+       * replacement 可以引用它们：
+       *     proxy_cookie_path ~*^/user/([^/]+) /u/$1;
+       *
+       * 可以有多个 proxy_cookie_path 指令：
+       *     proxy_cookie_path /one/ /;
+       *     proxy_cookie_path / /two/;
+       *
+       * off 参数取消所有 proxy_cookie_path 指令在当前级别上的影响。
+       *     proxy_cookie_path off;
+       *     proxy_cookie_path /two/ /;
+       *     proxy_cookie_path ~*^/user/([^/]+) /u/$1;
+       */
     { ngx_string("proxy_cookie_path"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
       ngx_http_proxy_cookie_path,
@@ -296,6 +457,23 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.store_access),
       NULL },
 
+      /* Syntax:  proxy_buffering on | off;
+       * Default: proxy_buffering on;    
+       * Context: http, server, location
+       * 
+       * 使能或禁止缓存来自被代理服务器的响应. 
+       * 
+       * 当 buffering 使能时，nginx 会尽快从被代理的服务器中接收响应，并保存到由
+       * proxy_buffer_size 和 proxy_buffers 指令设置的缓冲区中。如果将足以将所有的
+       * 响应保存到内存中，则会将其部分响应保存到磁盘的临时文件中。写入到临时文件是
+       * 由 proxy_max_temp_file_size 和 proxy_temp_file_write_size 指令控制。
+       * 
+       * 当 buffering 禁止时，会立即将接收到的响应同步转发给客户端。nginx不会尝试从
+       * 代理服务器读取整个响应。nginx 一次性可以从服务器接收的最大字节数由
+       * proxy_buffer_size 指令设置.
+       * 
+       * buffering 可以在 "X-Accel-Buffering" 响应头中通过 "yes" 或 "no" 启用或禁止.
+       * 该功能可使用 proxy_ignore_headers 指令来禁止 */
     { ngx_string("proxy_buffering"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -303,6 +481,20 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.buffering),
       NULL },
 
+      /* Syntax:  proxy_request_buffering on | off;
+       * Default: proxy_request_buffering on;
+       * Context: http, server, location
+       *
+       * 启用或禁止缓冲客户端请求 body.
+       * 
+       * 启用缓冲后，在将请求发送到代理服务器之前，将从客户端读取整个请求 body.
+       *
+       * 禁用缓冲时，在一接收到请求 body 就立即将其发送给代理服务器。在这种情况下，如果 nginx
+       * 已经开始发送请求 body，则无法将请求传递给下一个服务器.
+       *
+       * 当使用 HTTP/1.1 chunked 传输编码发送原始请求 body 时，无论指令值如何，都将缓冲请求
+       * body，除非为代理启用了 HTTP/1.1
+       */
     { ngx_string("proxy_request_buffering"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -310,6 +502,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.request_buffering),
       NULL },
 
+      /* Syntax:  proxy_ignore_client_abort on | off;
+       * Default: proxy_ignore_client_abort off;
+       * Context: http, server, location
+       *
+       * 确定在客户端关闭连接而不等待响应时是否应关闭与代理服务器的连接。
+       */
     { ngx_string("proxy_ignore_client_abort"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -317,6 +515,22 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.ignore_client_abort),
       NULL },
 
+      /* Syntax:	proxy_bind address [transparent] | off;
+       * Default:	—
+       * Context:	http, server, location
+       * 
+       * 使用可选端口(1.11.2)从指定的本地 IP 地址向被代理服务器(上游)发起外部连接。参数值
+       * 可以包含变量(1.3.12)。特殊值 off(1.3.12) 取消从上层配置中继承的 proxy_bind
+       * 指令产生的影响，允许系统自动分配本地 IP 地址和端口.
+       * 
+       * transparent 参数(1.11.0) 允许从一个非本地IP地址发起到被代理服务器的外部连接，
+       * 例如来自一个客户端的真实 IP 地址: 
+       * proxy_bind $remote_addr transparent;
+       * 为了使该参数工作，必须使用超级用户权限运行 Nginx worker 进程，并配置核心路由表
+       * 阻断从被代理服务器的网络流量. 
+       * 
+       * 如果Nginx后端的代理服务器只配置为接受来自特定IP网络或IP地址范围的连接，在这种情况
+       * 下，这个配置选项就很有用 */
     { ngx_string("proxy_bind"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
       ngx_http_upstream_bind_set_slot,
@@ -324,6 +538,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.local),
       NULL },
 
+      /* Syntax:  proxy_socket_keepalive on | off;
+       * Default: proxy_socket_keepalive off;
+       * Context: http, server, location
+       *
+       * 为到代理服务器的传出连接配置 "TCP keepalive" 行为. 默认情况下, 操作系统的设置对
+       * 套接字有效. 如果指令设置为 "on", 则为套接字打开 SO_KEEPALIVE 套接字选项.
+       */
     { ngx_string("proxy_socket_keepalive"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -331,6 +552,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.socket_keepalive),
       NULL },
 
+      /* Syntax:  proxy_connect_timeout time;
+       * Default: proxy_connect_timeout 60s;
+       * Context: http, server, location
+       *
+       * 指定与代理服务器建立连接的超时时间。注意，该超时时间通常不会超过 75s.
+       */
     { ngx_string("proxy_connect_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -338,6 +565,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.connect_timeout),
       NULL },
 
+      /* Syntax:  proxy_send_timeout time;
+       * Default: proxy_send_timeout 60s;
+       * Context: http, server, location
+       *
+       * 设置将请求传输到代理服务器的超时时间. 仅在两次连续的写入操作之间设置超时, 而不是
+       * 为整个请求的传输. 如果代理服务器在该时间内未接收到任何内容, 则关闭此连接.
+       */
     { ngx_string("proxy_send_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -345,6 +579,15 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.send_timeout),
       NULL },
 
+      /* Syntax: proxy_send_lowat size;
+       * Default: proxy_send_lowat 0;
+       * Context: http, server, location
+       *
+       * 如果指令设置为非零值，则 nginx 将尝试通过 kqueue 方法的 NOTE_LOWAT 标志或
+       * 具有指定大小的 SO_SNDLOWAT 套接字选项来最小化到代理服务器的传出连接上的
+       * 发送操作数.
+       * 在 Linux，Solaris 和 Windows 上忽略此指令.
+       */
     { ngx_string("proxy_send_lowat"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -352,6 +595,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.send_lowat),
       &ngx_http_proxy_lowat_post },
 
+      /* Syntax:  proxy_intercept_errors on | off;
+       * Default: proxy_intercept_errors off;
+       * Context: http, server, location
+       * 
+       * 确定响应状态码大于或等于 300 的后端响应是否传递给客户端还是拦截并重定向到 nginx，
+       * 以便 error_page 指令进行处理.
+       */
     { ngx_string("proxy_intercept_errors"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -359,6 +609,31 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.intercept_errors),
       NULL },
 
+      /* Syntax:  proxy_set_header field value;
+       * Default: proxy_set_header Host $proxy_host;
+       *          proxy_set_header Connection close;
+       * Context: http, server, location
+       *
+       * 允许重新定义或附加字段到传递给代理服务器的请求头. 该 value 可以包含文本, 变量, 以及它们的
+       * 联合. 当且仅当在当前级别没有定义 proxy_set_header 指令时才从上一级继承. 默认情况下，只重新
+       * 定义了两个字段:
+       *     proxy_set_header Host $proxy_host;
+       *     proxy_set_header Connection close;
+       *
+       * 如果启用了缓存, 则来自原始请求的 "If-Modified-Since", "If-Unmodified-Since", "If-None-Match",
+       * "If-Match", "Range", 以及 "If-Range" 等头部将不传递给代理服务器.
+       *
+       * 未更改的 "Host" 请求头可以像这样传递:
+       *     proxy_set_header Host       $http_host;
+       * 然而, 如果客户端请求头中不存在该字段, 则不会传递任何内容. 在这种情况下, 最好使用 $host 
+       * 变量 - 它的值等于 "Host" 请求头中的 server name, 或者如果不存在该字段则等于主 server name:
+       *     proxy_set_header Host       $host;
+       * 此外，服务器名称可以与代理服务器的端口一起传递: 
+       *     proxy_set_header Host       $host:$proxy_port;
+       * 
+       * 如果头字段值是空字符串的, 则此字段将不会传递给代理服务器:
+       *     proxy_set_header Accept-Encoding "";
+       */
     { ngx_string("proxy_set_header"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
       ngx_conf_set_keyval_slot,
@@ -366,6 +641,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, headers_source),
       NULL },
 
+      /* Syntax:  proxy_headers_hash_max_size size;
+       * Default: proxy_headers_hash_max_size 512;
+       * Context: http, server, location
+       *
+       * 设置由 proxy_hide_header 和 proxy_set_header 指令使用的哈希表的最大大小。
+       */
     { ngx_string("proxy_headers_hash_max_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -373,6 +654,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, headers_hash_max_size),
       NULL },
 
+      /* Syntax:  proxy_headers_hash_bucket_size size;
+       * Default: proxy_headers_hash_bucket_size 64;
+       * Context: http, server, location
+       *
+       * 设置由 proxy_hide_header 和 proxy_set_header 指令使用的哈希表的 bucket 大小。
+       */
     { ngx_string("proxy_headers_hash_bucket_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -380,6 +667,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, headers_hash_bucket_size),
       NULL },
 
+      /* Syntax:	proxy_set_body value;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 允许重新定义发送给代理服务器的请求 body. value 可以包含文本, 变量, 以及它们的联合.
+       */
     { ngx_string("proxy_set_body"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -387,6 +680,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, body_source),
       NULL },
 
+      /* Syntax:  proxy_method method;
+       * Default: —
+       * Context: http, server, location
+       *
+       * 指定转发到后端服务器的请求中使用的 HTTP 方法，而不是客户端请求中的方法。
+       * 参数值可以包含变量.
+       */
     { ngx_string("proxy_method"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
@@ -394,6 +694,18 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, method),
       NULL },
 
+      /* Syntax:  proxy_pass_request_headers on | off;
+       * Default: proxy_pass_request_headers on;
+       * Context: http, server, location
+       *
+       * 指示是否将原始请求头传递给代理服务器.
+       *   location /x-accel-redirect-here/ {
+       *       proxy_method GET;
+       *       proxy_pass_request_headers off;
+       *       proxy_pass_request_body off;
+       *       proxy_pass ...
+       *   }
+       */
     { ngx_string("proxy_pass_request_headers"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -401,6 +713,18 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.pass_request_headers),
       NULL },
 
+      /* Syntax:  proxy_pass_request_body on | off;
+       * Default: proxy_pass_request_body on;
+       * Context: http, server, location
+       *
+       * 指示是否将原始请求 body 传递给代理服务器.
+       * location /x-accel-redirect-here/ {
+       *     proxy_method GET;
+       *     proxy_pass_request_body off;
+       *     proxy_set_header Content-Length "";
+       *     proxy_pass ...
+       * }
+       */
     { ngx_string("proxy_pass_request_body"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -408,6 +732,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.pass_request_body),
       NULL },
 
+      /* Syntax:  proxy_buffer_size size;
+       * Default: proxy_buffer_size 4k|8k;
+       * Context: http, server, location
+       *
+       * 设置用于读取从被代理的服务器接收到的第一部分响应的缓冲区大小。该部分
+       * 通常包含一个小的响应头。默认情况下，该缓冲区的大小等于一个内存页。具体依赖于
+       * 平台，4k 或 8k。它也可以为更小 */
     { ngx_string("proxy_buffer_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -415,6 +746,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.buffer_size),
       NULL },
 
+      /* Syntax:  proxy_read_timeout time;
+       * Default: proxy_read_timeout 60s;
+       * Context: http, server, location
+       * 
+       * 指定从代理服务器读取响应的超时时间。仅在两个连续的读操作之间设置超时，而不是为整个
+       * 响应的传输。如果代理服务器在此时间内未传输任何内容，则关闭连接.
+       */
     { ngx_string("proxy_read_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -422,6 +760,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.read_timeout),
       NULL },
 
+      /* Syntax:  proxy_buffers number size;
+       * Default: proxy_buffers 8 4k|8k;
+       * Context: http, server, location 
+       *
+       * 设置用于读取代理服务器的响应的缓冲区个数和大小。默认情况下，缓冲区
+       * 大小等于一个内存页，4k 或 8k，具体依赖于平台。
+       */
     { ngx_string("proxy_buffers"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
       ngx_conf_set_bufs_slot,
@@ -429,6 +774,15 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.bufs),
       NULL },
 
+      /* Syntax:  proxy_busy_buffers_size size;
+       * Default: proxy_busy_buffers_size 8k|16k;
+       * Context: http, server, location 
+       *
+       * 当使能缓存来自代理服务器的响应时，在响应没有完全读取完时限制可能忙于
+       * 发送响应给客户端的缓冲区总大小。同时，其余缓冲区可用于读取响应，如果
+       * 需要，还可以缓存部分响应到临时文件。默认情况下，size 由 proxy_buffer_size
+       * 和 proxy_buffers 指令设置的两个缓冲区的大小限制。
+       */
     { ngx_string("proxy_busy_buffers_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -436,6 +790,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.busy_buffers_size_conf),
       NULL },
 
+      /* Syntax:  proxy_force_ranges on | off;
+       * Default: proxy_force_ranges off;
+       * Context: http, server, location
+       *
+       * 对来自代理服务器已缓存的和未缓存的响应启用 byte-range 支持，而不管在这些响应中的
+       * "Accept-Ranges" 字段。
+       */
     { ngx_string("proxy_force_ranges"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -443,6 +804,14 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.force_ranges),
       NULL },
 
+      /* Syntax:  proxy_limit_rate rate;
+       * Default: proxy_limit_rate 0;
+       * Context: http, server, location
+       *
+       * 限制从后端读取响应的速度。rate 以 byte/s 为单位。0 值禁止速率限制。限制是根据
+       * 每个请求来设置的，因此如果 nginx 同时打开两个到后端的连接，则总速率将是指定限制的
+       * 两倍。仅当启用了后端响应缓冲(buffering)时，该限制才有效.
+       */
     { ngx_string("proxy_limit_rate"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -452,6 +821,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
 
 #if (NGX_HTTP_CACHE)
 
+      /* Syntax:  proxy_cache zone | off;
+       * Default: proxy_cache off;
+       * Context: http, server, location
+       *
+       * 定义一个共享内存区域用于缓存后端服务器的响应的静态文件。相同的 zone 可出现在不同的位置。
+       * 参数值可以包含变量。off 参数禁用了从上级配置中继承的缓存.
+       */
     { ngx_string("proxy_cache"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_proxy_cache,
@@ -459,6 +835,15 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  proxy_cache_key string;
+       * Default: proxy_cache_key $scheme$proxy_host$request_uri;
+       * Context: http, server, location
+       *
+       * 为缓存定义一个 key，例如：
+       *    proxy_cache_key "$host$request_uri $cookie_user";
+       * 默认情况下，指令值接近于字符串：
+       *    proxy_cache_key $scheme$proxy_host$uri$is_args$args;
+       */
     { ngx_string("proxy_cache_key"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_proxy_cache_key,
@@ -466,6 +851,57 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  proxy_cache_path path [levels=levels] [use_temp_path=on|off] \
+       *              keys_zone=name:size [inactive=time] [max_size=size]      \
+       *              [manager_files=number] [manager_sleep=time]              \
+       *              [manager_threshold=time] [loader_files=number]           \
+       *              [loader_sleep=time] [loader_threshold=time]              \
+       *              [purger=on|off] [purger_files=number] [purger_sleep=time]\
+       *              [purger_threshold=time];
+       * Default: —
+       * Context: http
+       *
+       * 设置缓存的路径以及其他参数。缓存数据保存在文件中。缓存中的文件名是将 md5 函数
+       * 应用于 cache_key 的结果。levels 参数定义缓存层级：1~3。例如下面的配置:
+       *    proxy_cache_path /data/nginx/cache levels=1:2 keys_zone=one:10m;
+       * 缓存中的文件名将如下所示:
+       *    /data/nginx/cache/c/29/b7f54b2df7773722d382f4809d65029c
+       * 
+       * 缓存的响应首先写入到临时文件，然后重命名该文件。从 0.8.9 版本开始，临时文件和缓存
+       * 可以被放入到不同的文件系统中。但是，请注意，在这种情况下，文件是跨两个文件系统复制
+       * 的，而不是简单的重命名操作。因此，建议对于任意指定 location，缓存和包含临时文件的
+       * 目录都放在同一个文件系统中。临时文件的目录是由 use_temp_path 参数设置的。如果省略该
+       * 参数或者设置为 on，则目录将使用 proxy_temp_path 指令在指定的 location 中设置。如果设置
+       * 为 off，则临时文件将直接放入到缓存目录中.
+       *
+       * 此外，所有 active keys 和有关数据的信息都存储在共享内存区域中，该共享内存区域的名称和
+       * 大小由 keys_zone 参数设置。1M 大小的 zone 可以存储大约 8000 个keys.
+       *
+       * 在 inactive 参数指定的时间内未访问过的缓存数据将会被移除，而不管其是否是新的。inactive
+       * 默认设置为 10m。
+       *
+       * 特殊的 "cache manager" 进程监控由 max_size 参数设置的最大缓存大小。当超过该大小时，将
+       * 移除最近最少使用的数据。该数据在由 manager_files，manager_threshold，以及 manager_sleep
+       * 参数配置的迭代中被移除。在一次迭代中，不会移除多于 manager_files 的项（默认100）。一次
+       * 迭代的持续时间由 manager_threshold 参数限制（默认 200ms）。在两次迭代之间，暂停由 
+       * manager_sleep 参数配置的时间（默认50ms）.
+       *
+       * 启动一分钟后，特殊的 "cache loader" 进程将被激活。它将以前存储在文件系统上的相关缓存数据
+       * 的信息加载到缓存区域。加载也是在迭代(in iteration)中完成的。在一次迭代中，加载的项不超过
+       * loader_files（默认 100）。此外，一次迭代的持续时间由 load_threshold 参数限制（默认200ms）。
+       * 在两次迭代之间，暂停 load_sleep 参数配置的时间（默认50ms）
+       *
+       * 可选参数:
+       * purger=on|off
+       *     指示 cache purger 是否从磁盘中将匹配 wildcard key 的缓存项移除。将参数设置为 on(默认off)
+       *     将激活 "cache purger" 进程，该进程将永久遍历所有的缓存项，并移除匹配 wildcard key 的项.
+       * purger_files=number
+       *     设置在一次迭代期间可以浏览的项目数。默认 purger_files 设为 10.
+       * purger_threshold=number
+       *     设置一次迭代持续的时间。默认 purger_threshold 设为 50ms
+       * purger_sleep=number
+       *     设置在两次迭代中间暂停的时间。默认 50ms.
+       */
     { ngx_string("proxy_cache_path"),
       NGX_HTTP_MAIN_CONF|NGX_CONF_2MORE,
       ngx_http_file_cache_set_slot,
@@ -473,6 +909,16 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_main_conf_t, caches),
       &ngx_http_proxy_module },
 
+      /* Syntax:	proxy_cache_bypass string ...;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 定义在哪些情况下，响应不会从缓存中取。如果有至少一个字符串参数非空
+       * 且不等于 "0"，则响应不会从缓存中取:
+       *   proxy_cache_bypass $cookie_nocache $arg_nocache$arg_comment;
+       *   proxy_cache_bypass $http_pragma    $http_authorization;
+       * 可以与 proxy_no_cache 指令一起使用.
+       */
     { ngx_string("proxy_cache_bypass"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_set_predicate_slot,
@@ -480,6 +926,16 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_bypass),
       NULL },
 
+      /* Syntax:	proxy_no_cache string ...;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 定义不将响应保存到缓存中的条件。如果字符串参数至少有一个值不为空且不等于 "0"
+       * 则不会缓存响应:
+       *     proxy_no_cache $cookie_nocache $arg_nocache$arg_comment;
+       *     proxy_no_cache $http_pragma    $http_authorization;
+       * 可以与 proxy_cache_bypass 指令一起使用.
+       */
     { ngx_string("proxy_no_cache"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_set_predicate_slot,
@@ -487,6 +943,35 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.no_cache),
       NULL },
 
+      /* Syntax:	proxy_cache_valid [code ...] time;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 为不同的响应码设置缓存时间。如下：
+       *    proxy_cache_valid 200 302 10m;
+       *    proxy_cache_valid 404      1m;
+       * 对 200 和 302 的响应设置为缓存 10 分钟，而 404 响应则设置为缓存 1 分钟.
+       * 
+       * 若仅指定缓存时间:
+       *    proxy_cache_valid 5m;
+       * 则仅缓存 200，301，以及 302 响应
+       *
+       * 此外，any 参数指定可以缓存任意响应：
+       *    proxy_cache_valid 200 302 10m;
+       *    proxy_cache_valid 301      1h;
+       *    proxy_cache_valid any      1m;
+       * 
+       * 也可以直接在响应头中设置缓存的参数。这比使用指令设置缓存时间具有更高的优先级.
+       * - "X-Accel-Expires" 头以秒为单位设置响应的缓存时间。零值禁止缓存该响应。如果该值
+       *   "@" 前缀开始，它将设置为 Epoch 以来的绝对秒数，可以将响应缓存到该时间.
+       * - 如果响应头没有包含 "X-Accel-Expires" 字段，则缓存时间参数可以在 "Expires" 或者
+       *   "Cache-Control" 头中设置.
+       * - 如果头包含 "Set-Cookie" 字段，则不会缓存此类响应.
+       * - 如果头包含带有特殊值 "*" 的 "Vary" 字段，则不会缓存此类响应。如果头包含另一个值
+       *   的 "Vary" 字段，则此类响应涉及到的相应请求头将会被缓存。
+       * 
+       * 可以使用 proxy_ignore_headers 指令禁止对一个或多个响应头进行处理.
+       */
     { ngx_string("proxy_cache_valid"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_file_cache_valid_set_slot,
@@ -494,6 +979,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_valid),
       NULL },
 
+      /* Syntax:  proxy_cache_min_uses number;
+       * Default: proxy_cache_min_uses 1;
+       * Context: http, server, location
+       *
+       * 设置请求多少次后将会缓存该响应.
+       */
     { ngx_string("proxy_cache_min_uses"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -501,6 +992,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_min_uses),
       NULL },
 
+      /* Syntax:	proxy_cache_max_range_offset number;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 为 Range 请求设置 offset，单位字节。如果 Range 超过该 offset，该 Range
+       * 请求将被传递到代理服务器，且不会缓存该响应.
+       */
     { ngx_string("proxy_cache_max_range_offset"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_off_slot,
@@ -508,6 +1006,26 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_max_range_offset),
       NULL },
 
+      /* Syntax:  proxy_cache_use_stale error | timeout | invalid_header | updating | http_500 | http_502 | http_503 | http_504 | http_403 | http_404 | http_429 | off ...;
+       * Default: proxy_cache_use_stale off;
+       * Context: http, server, location
+       * 
+       * 指定在哪些情况下可以在与代理服务器通信期间使用过期的缓存对象进行响应。该指令的参数与
+       * proxy_next_upstream 指令的参数相匹配.
+       * 
+       * 如果连接代理服务器处理请求，则 error 参数允许使用过期缓存对象进行响应.
+       * 
+       * 如果当前正在更新对象，则 updating 参数允许使用过期缓存对象进行响应。这样，在更新
+       * 缓存对象时，可以最大限度地减少对代理服务器的访问.
+       *
+       * 可以在响应头中通过指定秒数来直接启用，在响应变为过期后，在指定的秒数内可以使用过期缓存
+       * 对象进行响应。这比使用指令参数具有更低的优先级：
+       * - "Cache-Control" 头的扩展 "stale-while-revalidate" 允许使用过期缓存对象进行响应（如果
+       *   当前正在进行更新）
+       * - "Cache-Control" 头的扩展 "stale-if-error" 允许在 error 的情况下使用过期缓存对象进行响应
+       *
+       * 在写入新缓存对象时为了最大限度地减少与代理服务器的访问，可以使用 proxy_cache_lock 指令
+       */
     { ngx_string("proxy_cache_use_stale"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
@@ -515,6 +1033,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_use_stale),
       &ngx_http_proxy_next_upstream_masks },
 
+      /* Syntax:  proxy_cache_methods GET | HEAD | POST ...;
+       * Default: proxy_cache_methods GET HEAD;
+       * Context: http, server, location
+       *
+       * 如果客户端请求的方法在该指令的列表中，则该请求的响应将会被缓存。默认情况下，
+       * "GET" 和 "HEAD" 方法总是添加到该列表中.
+       */
     { ngx_string("proxy_cache_methods"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
@@ -522,6 +1047,17 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_methods),
       &ngx_http_upstream_cache_method_mask },
 
+      /* Syntax:  proxy_cache_lock on | off;
+       * Default: proxy_cache_lock off;
+       * Context: http, server, location
+       *
+       * 启用后，通过将请求传递给代理服务器，同一时间仅允许一个请求去获取根据 proxy_cache_key 
+       * 指令标识的新缓存项。同一缓存项的其他请求将等待响应出现在缓存中或者该缓存项的
+       * 缓存锁被释放，等待的上限时间由 proxy_cache_lock_timeout 指令设置.
+       * 
+       * 意思就是同时有多个同一个对象的访问请求到来，而对象MISS，则仅允许一个请求可以获取锁，
+       * 向后端获取对象，而其余的请求等待响应出现在缓存中或锁被释放.
+       */
     { ngx_string("proxy_cache_lock"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -529,6 +1065,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_lock),
       NULL },
 
+      /* Syntax:  proxy_cache_lock_timeout time;
+       * Default: proxy_cache_lock_timeout 5s;
+       * Context: http, server, location
+       *
+       * 设置 proxy_cache_lock 的超时时间。当 time 过期时，请求将会被传递到代理服务器，
+       * 但是，响应将不会被缓存.
+       */
     { ngx_string("proxy_cache_lock_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -536,6 +1079,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_lock_timeout),
       NULL },
 
+      /* Syntax:  proxy_cache_lock_age time;
+       * Default: proxy_cache_lock_age 5s;
+       * Context: http, server, location
+       *
+       * 如果上一个向代理服务器获取新缓存对象的请求在 proxy_cache_lock_age 指定的
+       * 时间内没有获取成功，则缓存锁将会被释放，将有更多的请求被传递给代理服务器.
+       */
     { ngx_string("proxy_cache_lock_age"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -543,6 +1093,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_lock_age),
       NULL },
 
+      /* Syntax:  proxy_cache_revalidate on | off;
+       * Default: proxy_cache_revalidate off;
+       * Context: http, server, location
+       *
+       * 使能使用带有 "If-Modified-Since" 和 "If-None-Match" 头的条件请求重新校验
+       * 过期的缓存对象.
+       */
     { ngx_string("proxy_cache_revalidate"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -550,6 +1107,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_revalidate),
       NULL },
 
+      /* Syntax:  proxy_cache_convert_head on | off;
+       * Default: proxy_cache_convert_head on;
+       * Context: http, server, location
+       *
+       * 使能或禁止为缓存而将 "HEAD" 方法转换为 "GET" 方法。当转换被禁用时，
+       * cache_key 应该配置为包含 $request_method.
+       */
     { ngx_string("proxy_cache_convert_head"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -557,6 +1121,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.cache_convert_head),
       NULL },
 
+      /* Syntax:  proxy_cache_background_update on | off;
+       * Default: proxy_cache_background_update off;
+       * Context: http, server, location 
+       *
+       * 允许发起一个后台子请求更新过期对象，而过期缓存对象将响应给客户端。
+       * 注意，当正在更新过期缓存对象时，该过期缓存对象必须可以响应给客户端.
+       */
     { ngx_string("proxy_cache_background_update"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -566,6 +1137,18 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
 
 #endif
 
+      /* Syntax:  proxy_temp_path path [level1 [level2 [level3]]];
+       * Default: proxy_temp_path proxy_temp;
+       * Context: http, server, location
+       *
+       * 定义用于存储临时文件的目录, 其中包含从代理服务器接收的数据. 在指定的目录下最多可以
+       * 使用三级子目录层次结构. 例如如下的配置:
+       *     proxy_temp_path /spool/nginx/proxy_temp 1 2;
+       *
+       * 一个临时文件可能如下： 
+       *     /spool/nginx/proxy_temp/7/45/00000123457
+       * 另参阅 proxy_cache_path 指令的 use_temp_path 参数.
+       */
     { ngx_string("proxy_temp_path"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234,
       ngx_conf_set_path_slot,
@@ -573,6 +1156,16 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.temp_path),
       NULL },
 
+      /* Syntax:  proxy_max_temp_file_size size;
+       * Default: proxy_max_temp_file_size 1024m;
+       * Context: http, server, location 
+       *
+       * 当启用来自后端服务器的响应缓冲时，并且整个响应不足以放入到由 proxy_buffer_size 
+       * 和 proxy_buffers 指令设置的缓冲区中，部分响应将会保存到临时文件中。该指令设置临时
+       * 文件的最大大小。一次写入临时文件的数据大小由 proxy_temp_file_wirte_size 指令设置.
+       *
+       * 零值将禁止将响应缓冲到临时文件中.
+       */
     { ngx_string("proxy_max_temp_file_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -580,6 +1173,14 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.max_temp_file_size_conf),
       NULL },
 
+      /* Syntax:  proxy_temp_file_write_size size;
+       * Default: proxy_temp_file_write_size 8k|16k;
+       * Context: http, server, location
+       *
+       * 当启用将来自代理服务器的响应缓冲到临时文件时, 限制一次写入临时文件的数据大小. 默认
+       * 情况下, size 由 proxy_buffer_size 和 proxy_buffers 指令设置的两个缓冲区限制. 临时
+       * 文件的最大大小由 proxy_max_temp_file_size 指令设置.
+       */
     { ngx_string("proxy_temp_file_write_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -587,6 +1188,49 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.temp_file_write_size_conf),
       NULL },
 
+      /* Syntax:  proxy_next_upstream error | timeout | invalid_header | http_500 | 
+       *          http_502 | http_503 | http_504 | http_403 | http_404 | http_429 | 
+       *          non_idempotent | off ...;
+       * Default: proxy_next_upstream error timeout;
+       * Context: http, server, location 
+       *
+       * 指定在哪种情况下请求将会被传递到下一个后端服务器:
+       * error
+       *     当与后端服务器建立连接，或者向其发送请求时，或者读取响应头时发生的错误;
+       * timeout
+       *     在与后端服务器建立连接，或者向其发送请求时，或者读取响应头时发生超时;
+       * invalid_header
+       *     后端服务器返回一个空的或者无效的响应;
+       * http_500
+       *     后端服务器响应 500
+       * http_502
+       *     后端服务器响应 502
+       * http_503
+       *     后端服务器响应 503
+       * http_504
+       *     后端服务器响应 504
+       * http_403
+       *     后端服务器响应 403
+       * http_404
+       *     后端服务器响应 404
+       * http_429
+       *     后端服务器响应 429
+       * non_idempotent
+       *     通常，如果请求已发送到上游服务器，则使用 non-idempotent 方法(POST, LOCK, PATCH)
+       *     的请求不会传递到下一个服务器；启用此选项显示允许可以重试此类请求.
+       * off
+       *     禁止传递请求到下一个服务器.
+       *
+       * 应该记住，只有在未向客户端发送任何内容的情况下才能将请求传递给下一个服务器。也就是说，
+       * 如果在传输响应的过程中发生错误或者超时，则无法修复此问题(即无法再将请求传给下一个服务器).
+       *
+       * 该指令还定义了与服务器通信的不成功尝试。error，timeout，以及 invalid_header 总被视为不成功
+       * 的尝试，即使它们未在指令中指定。http_500, http_502, http_503, http_504, 以及 Http_429 
+       * 仅在指令中指定的情况下才被视为不成功的尝试。http_403 和 http_404 从未被视为不成功的尝试.
+       *
+       * 将请求传递给下一个服务器将受到	proxy_next_upstream_tries 和 proxy_next_upstream_timeout
+       * 的限制.
+       */
     { ngx_string("proxy_next_upstream"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
@@ -594,6 +1238,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.next_upstream),
       &ngx_http_proxy_next_upstream_masks },
 
+      /* Syntax:  proxy_next_upstream_tries number;
+       * Default: proxy_next_upstream_tries 0;
+       * Context: http, server, location
+       *
+       * 限制将请求传递到下一个服务器的可能尝试次数。0 值关闭此限制.
+       */
     { ngx_string("proxy_next_upstream_tries"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -601,6 +1251,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.next_upstream_tries),
       NULL },
 
+      /* Syntax:  proxy_next_upstream_timeout time;
+       * Default: proxy_next_upstream_timeout 0;
+       * Context: http, server, location
+       *
+       * 限制请求可以传递到下一个服务器所持续的时间。0 值关闭此限制.
+       */
     { ngx_string("proxy_next_upstream_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -608,6 +1264,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.next_upstream_timeout),
       NULL },
 
+      /* Syntax:	proxy_pass_header field;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 允许将代理服务器上禁止的头(参见 proxy_hide_header 指令)传递给客户端.
+       */
     { ngx_string("proxy_pass_header"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_array_slot,
@@ -615,6 +1277,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.pass_headers),
       NULL },
 
+      /* Syntax:  proxy_hide_header field;
+       * Default: —
+       * Context: http, server, location
+       * 
+       * nginx 默认不将来自代理服务器的响应头："Date"，"Server"，"X-Pad"，以及 "X-Accel-..." 
+       * 等传递给客户端。proxy_hide_header 设置额外的不传递给客户端的响应头。
+       */
     { ngx_string("proxy_hide_header"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_array_slot,
@@ -622,6 +1291,22 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.hide_headers),
       NULL },
 
+      /* Syntax:  proxy_ignore_headers field ...;
+       * Default: —
+       * Context: http, server, location
+       *
+       * 禁止处理来自代理服务器的某些响应头。如下头可以被忽略: "X-Accel-Redirect", "X-Accel-Expires",
+       * "X-Accel-Limit-Rate", "X-Accel-Buffering", "X-Accel-Charset", "Expires", "Cache-Control",
+       * "Set-Cookie", 以及 "Vary"
+       *
+       * 如果没有禁止，则处理这些头部将产生如下影响：
+       * - "X-Accel-Expires", "Expires", "Cache-Control", "Set-Cookie", 以及 "Vary" 设置响应的缓存
+       *   时间，参见 proxy_cache_valid 指令
+       * - "X-Accel-Redirect" 执行内部重定向(参见 internal 指令)到指定的 URI。
+       * - "X-Accel-Limit-Rate" 设置向客户端传输响应的速率限制(参见 limit_rate 指令)
+       * - "X-Accel-Buffering" 使能或禁止 buffering(参加 proxy_buffering 指令) 响应
+       * - "X-Accel-Charset" 设置所期望的响应字符集(参见 charset 指令)
+       */
     { ngx_string("proxy_ignore_headers"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
@@ -629,6 +1314,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.ignore_headers),
       &ngx_http_upstream_ignore_headers_masks },
 
+      /* Syntax:  proxy_http_version 1.0 | 1.1;
+       * Default: proxy_http_version 1.0;
+       * Context: http, server, location
+       *
+       * 为代理设置 HTTP 协议版本。默认使用 1.0。使用 keepalive 连接或者 NTLM authentication
+       * 则建议使用 1.1
+       */
     { ngx_string("proxy_http_version"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_enum_slot,
@@ -638,6 +1330,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
 
 #if (NGX_HTTP_SSL)
 
+      /* Syntax:  proxy_ssl_session_reuse on | off;
+       * Default: proxy_ssl_session_reuse on;
+       * Context: http, server, location
+       *
+       * 确定在使用代理服务器时是否可以重用 SSL 会话. 如果日志中出现错误 
+       * "SSL3_GET_FINISHED:digest check failed", 则尝试禁用会话重用.
+       */
     { ngx_string("proxy_ssl_session_reuse"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -645,6 +1344,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.ssl_session_reuse),
       NULL },
 
+      /* Syntax:  proxy_ssl_protocols [SSLv2] [SSLv3] [TLSv1] [TLSv1.1] [TLSv1.2] [TLSv1.3];
+       * Default: proxy_ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+       * Context: http, server, location
+       *
+       * 为发送到代理 HTTPS 服务器的请求启用指定的协议.
+       */
     { ngx_string("proxy_ssl_protocols"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
@@ -652,6 +1357,14 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, ssl_protocols),
       &ngx_http_proxy_ssl_protocols },
 
+      /* Syntax:  proxy_ssl_ciphers ciphers;
+       * Default: proxy_ssl_ciphers DEFAULT;
+       * Context: http, server, location
+       *
+       * 指定对发送到代理 HTTPS 服务器的请求启用 cipher(即加密). 密码以 OpenSSL 库理解的
+       * 格式指定.
+       * 可以使用 "openssl chiphers" 查看完整的列表.
+       */ 
     { ngx_string("proxy_ssl_ciphers"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -659,6 +1372,14 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, ssl_ciphers),
       NULL },
 
+      /* Syntax:  proxy_ssl_name name;
+       * Default: proxy_ssl_name $proxy_host;
+       * Context: http, server, location
+       *
+       * 允许覆盖用于验证代理 HTTPS 服务器证书的服务器名称, 并在与代理 HTTPS 服务器
+       * 建立连接时通过 SNI 传递.
+       * 默认情况下, 使用 proxy_pass URL 的 host 部分.
+       */
     { ngx_string("proxy_ssl_name"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
@@ -666,6 +1387,13 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.ssl_name),
       NULL },
 
+      /* Syntax:  proxy_ssl_server_name on | off;
+       * Default: proxy_ssl_server_name off;
+       * Context: http, server, location
+       *
+       * 在与代理 HTTPS 服务器建立连接时, 启用或禁用通过 TLS 服务器名称指示扩展(SNI, RFC 6066)
+       * 传递服务器名称.
+       */
     { ngx_string("proxy_ssl_server_name"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -673,6 +1401,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.ssl_server_name),
       NULL },
 
+      /* Syntax:  proxy_ssl_verify on | off;
+       * Default: proxy_ssl_verify off;
+       * Context: http, server, location
+       *
+       * 启用或禁用代理 HTTPS 服务器证书的验证.
+       */
     { ngx_string("proxy_ssl_verify"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -680,6 +1414,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, upstream.ssl_verify),
       NULL },
 
+      /* Syntax:  proxy_ssl_verify_depth number;
+       * Default: proxy_ssl_verify_depth 1;
+       * Context: http, server, location
+       *
+       * 在代理 HTTPS 服务器证书链中设置验证深度.
+       */
     { ngx_string("proxy_ssl_verify_depth"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -687,6 +1427,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, ssl_verify_depth),
       NULL },
 
+      /* Syntax:	proxy_ssl_trusted_certificate file;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 指定具有 PEM 格式的可信 CA 证书的 file, 用于验证代理 HTTPS 服务器的证书.
+       */
     { ngx_string("proxy_ssl_trusted_certificate"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -694,6 +1440,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, ssl_trusted_certificate),
       NULL },
 
+      /* Syntax:	proxy_ssl_crl file;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 指定具有 PEM 格式的已吊销证书(CRL) file, 用于验证代理的 HTTPS 服务器的证书.
+       */
     { ngx_string("proxy_ssl_crl"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -701,6 +1453,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, ssl_crl),
       NULL },
 
+      /* Syntax:	proxy_ssl_certificate file;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 指定具有 PEM 格式的证书的 file, 该证书对代理的 HTTPS 服务器进行身份验证.
+       */
     { ngx_string("proxy_ssl_certificate"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -708,6 +1466,14 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, ssl_certificate),
       NULL },
 
+      /* Syntax:	proxy_ssl_certificate_key file;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 指定具有 PEM 格式的密钥 file, 该密钥对代理的 HTTPS 服务器进行身份验证.
+       * 可以指定值 engine:name:id, 而不是 file, 则将会从 OpenSSL 引擎 name 中根据指定的 id 
+       * 加载密钥.
+       */
     { ngx_string("proxy_ssl_certificate_key"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -715,6 +1481,12 @@ static ngx_command_t  ngx_http_proxy_commands[] = {
       offsetof(ngx_http_proxy_loc_conf_t, ssl_certificate_key),
       NULL },
 
+      /* Syntax:	proxy_ssl_password_file file;
+       * Default:	—
+       * Context:	http, server, location
+       *
+       * 指定具有密钥密码的 file, 其中每个密码在单独的行上指定. 在加载密钥时依次尝试密码短语.
+       */
     { ngx_string("proxy_ssl_password_file"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_proxy_ssl_password_file,
