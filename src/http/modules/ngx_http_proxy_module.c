@@ -1628,6 +1628,7 @@ ngx_http_proxy_handler(ngx_http_request_t *r)
     ngx_http_proxy_main_conf_t  *pmcf;
 #endif
 
+    /* 仅创建 ngx_http_upstream_t 结构体, 其中的成员还需要各个 HTTP 模块自行设置 */
     if (ngx_http_upstream_create(r) != NGX_OK) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
@@ -1706,6 +1707,9 @@ ngx_http_proxy_handler(ngx_http_request_t *r)
         r->request_body_no_buffering = 1;
     }
 
+    /* 读取完请求 body 后回调 ngx_http_upstream_init 方法, 该方法将根据 
+     * ngx_http_upstream_conf_t 中的成员初始化 upstream, 同时会开始连接上游
+     * 服务器 */
     rc = ngx_http_read_client_request_body(r, ngx_http_upstream_init);
 
     if (rc >= NGX_HTTP_SPECIAL_RESPONSE) {

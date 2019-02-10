@@ -382,6 +382,9 @@ struct ngx_http_core_loc_conf_s {
     uint32_t      limit_except;
     void        **limit_except_loc_conf;
 
+    /* HTTP 框架在处理用户请求进行到 NGX_HTTP_CONTENT_PHASE 阶段时, 仅当请求的主机域名、uri 与
+     * 对应配置指令(如 proxy_pass)所在的配置块相匹配时, 才调用该方法
+     */
     ngx_http_handler_pt  handler;
 
     /* location name length for inclusive location with inherited alias */

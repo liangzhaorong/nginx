@@ -421,7 +421,10 @@ typedef void (*ngx_http_upstream_handler_pt)(ngx_http_request_t *r,
 
 
 struct ngx_http_upstream_s {
-    /* 处理读事件的回调方法，每一个阶段都有不同的 read_event_handler */
+    /* 处理读事件的回调方法，每一个阶段都有不同的 read_event_handler.
+     * 注意 ngx_http_upstream_t 和 ngx_http_request_t 都有该成员, 分别在 ngx_http_request_handler 和 
+     * ngx_http_upstream_handler 中执行.
+     */
     ngx_http_upstream_handler_pt     read_event_handler;
     /* 处理写事件的回调方法，每一个阶段都有不同的 write_event_handler */
     ngx_http_upstream_handler_pt     write_event_handler;
