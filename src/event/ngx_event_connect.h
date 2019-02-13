@@ -75,6 +75,7 @@ struct ngx_peer_connection_s {
     /* 标志位，为 1 时表示上面的 connection 连接已经缓存 */
     unsigned                         cached:1;
     unsigned                         transparent:1;
+    /* 标志位，为 1 表示该连接为 keep alive 连接 */
     unsigned                         so_keepalive:1;
 
     /* 与 ngx_connection_t 里的 log_error 意义是相同的，区别在于这里的 log_error 只有两位，只能表达 4 种错误，

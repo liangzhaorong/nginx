@@ -125,6 +125,7 @@ typedef struct {
     ngx_chain_t                   *free;
     ngx_chain_t                   *busy;
 
+    /* 标志位，指示客户端请求使用的是 HEAD 方法 */
     unsigned                       head:1;
     unsigned                       internal_chunked:1;
     unsigned                       header_sent:1;
@@ -1922,6 +1923,7 @@ ngx_http_proxy_create_key(ngx_http_request_t *r)
 #endif
 
 
+/* ngx_http_proxy_module 模块通过该函数构造发往上游服务器的请求 */
 static ngx_int_t
 ngx_http_proxy_create_request(ngx_http_request_t *r)
 {
@@ -1952,15 +1954,18 @@ ngx_http_proxy_create_request(ngx_http_request_t *r)
     headers = &plcf->headers;
 #endif
 
+    /* 仅针对启用缓存功能，即 proxy_cache 时将 HEAD 方法转换为 GET 方法，以便缓存响应 */
     if (u->method.len) {
         /* HEAD was changed to GET to cache response */
         method = u->method;
 
+    /* 若通过 proxy_method 指令重新指定了发送到后端请求所使用的方法 */
     } else if (plcf->method) {
         if (ngx_http_complex_value(r, plcf->method, &method) != NGX_OK) {
             return NGX_ERROR;
         }
 
+    /* 正常客户端请求的方法 */
     } else {
         method = r->method_name;
     }
@@ -1973,6 +1978,7 @@ ngx_http_proxy_create_request(ngx_http_request_t *r)
         ctx->head = 1;
     }
 
+    /* 计算请求行的长度 */
     len = method.len + 1 + sizeof(ngx_http_proxy_version) - 1
           + sizeof(CRLF) - 1;
 
