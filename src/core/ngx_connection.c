@@ -1107,6 +1107,8 @@ ngx_get_connection(ngx_socket_t s, ngx_log_t *log)
         return NULL;
     }
 
+    /* 从 ngx_cycle_t 核心结构体中 free_connections 指向的空闲连接池处
+     * 获取一个 ngx_connection_t 结构体 */
     c = ngx_cycle->free_connections;
 
     if (c == NULL) {

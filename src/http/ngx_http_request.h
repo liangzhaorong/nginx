@@ -556,6 +556,10 @@ struct ngx_http_request_s {
     unsigned                          request_body_file_log_level:3;
     unsigned                          request_body_no_buffering:1;
 
+    /* 为 1 时，不转发上游响应（即不实现反向代理）
+     * 为 0 时，转发响应，又分两种，当 ngx_http_upstream_conf_t 配置结构体中的 buffering 标志位：
+     *   为 0，则以下游网速优先，使用固定大小的内存作为缓存；
+     *   为 1，则以上游网速优先，使用更多的内存、硬盘文件作为缓存 */
     unsigned                          subrequest_in_memory:1;
     unsigned                          waited:1;
 

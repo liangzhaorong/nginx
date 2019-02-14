@@ -38,6 +38,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
 
     type = (pc->type ? pc->type : SOCK_STREAM);
 
+    /* 建立一个 TCP 套接字 */
     s = ngx_socket(pc->sockaddr->sa_family, type, 0);
 
     ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "%s socket %d",
@@ -50,6 +51,8 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     }
 
 
+    /* Nginx 事件框架要求每个连接都由一个 ngx_connection_t 结构体来承载，
+     * 因此这里获取一个 ngx_connection_t 结构体 */
     c = ngx_get_connection(s, pc->log);
 
     if (c == NULL) {
@@ -63,6 +66,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
 
     c->type = type;
 
+    /* 若通过指令指定了套接字接收缓冲区的大小，则设置该套接字 */
     if (pc->rcvbuf) {
         if (setsockopt(s, SOL_SOCKET, SO_RCVBUF,
                        (const void *) &pc->rcvbuf, sizeof(int)) == -1)
@@ -73,6 +77,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
         }
     }
 
+    /* 若通过 proxy_socket_keepalive 指令指定进行长连接 */
     if (pc->so_keepalive) {
         value = 1;
 
@@ -85,6 +90,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
         }
     }
 
+    /* 设置该套接字为非阻塞 */
     if (ngx_nonblocking(s) == -1) {
         ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
                       ngx_nonblocking_n " failed");
@@ -193,6 +199,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
 
     c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
 
+    /* 将读写事件添加到 epoll 监听池中 */
     if (ngx_add_conn) {
         if (ngx_add_conn(c) == NGX_ERROR) {
             goto failed;
@@ -202,12 +209,16 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, pc->log, 0,
                    "connect to %V, fd:%d #%uA", pc->name, s, c->number);
 
+    /* 向上游服务器发起 TCP 连接，作为非阻塞套接字，connect 方法可能立刻返回连接建立
+     * 成功，也可能告诉用户继续等待上游服务器的响应 */
     rc = connect(s, pc->sockaddr, pc->socklen);
 
     if (rc == -1) {
         err = ngx_socket_errno;
 
 
+        /* 将一个 TCP 套接字设置为非阻塞后，connect 会立即返回 EINPROGRESS 错误，
+         * 表示连接操作正在进行中，但是仍未完成，同时 TCP 的三路握手继续进行 */
         if (err != NGX_EINPROGRESS
 #if (NGX_WIN32)
             /* Winsock returns WSAEWOULDBLOCK (NGX_EAGAIN) */
@@ -246,6 +257,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     }
 
     if (ngx_add_conn) {
+        /* 通常与上游服务器不在同一台主机时，非阻塞下出现会立即返回 EINPROGRESS 错误*/
         if (rc == -1) {
 
             /* NGX_EINPROGRESS */
@@ -255,6 +267,8 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
 
         ngx_log_debug0(NGX_LOG_DEBUG_EVENT, pc->log, 0, "connected");
 
+        /* 连接成功，则设置该标志位，指示当前事件已经准备就绪，允许
+         * 这个事件的消费模块处理这个事件 */
         wev->ready = 1;
 
         return NGX_OK;

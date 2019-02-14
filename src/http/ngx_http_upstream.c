@@ -1299,29 +1299,39 @@ ngx_http_upstream_handler(ngx_event_t *ev)
     ngx_http_request_t   *r;
     ngx_http_upstream_t  *u;
 
+    /* 由事件的 data 成员取得 ngx_connection_t 连接。注意，该连接并不是
+     * Nginx 与客户端的连接，而是 Nginx 与上游服务器间的连接 */
     c = ev->data;
+    /* 由连接的 data 成员取得 ngx_http_request_t 结构体 */
     r = c->data;
 
+    /* 由请求的 upstream 成员取得表示 upstream 机制的 ngx_http_upstream_t 结构体 */
     u = r->upstream;
+    /* 注意，ngx_http_request_t 结构体中的这个 connection 连接是客户端与 Nginx 间的连接 */
     c = r->connection;
 
     ngx_http_set_log_request(c->log, r);
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
                    "http upstream request: \"%V?%V\"", &r->uri, &r->args);
-
+    
     if (ev->delayed && ev->timedout) {
         ev->delayed = 0;
         ev->timedout = 0;
     }
 
     if (ev->write) {
+        /* 当 Nginx 与上游服务器间 TCP 连接的可写事件被触发时，upstream 的
+         * write_event_handler 方法将会被调用 */
         u->write_event_handler(r, u);
 
     } else {
+        /* 当 Nginx 与上游服务器间 TCP 连接的可读事件被触发时，upstream 的
+         * read_event_handler 方法将会被调用 */
         u->read_event_handler(r, u);
     }
 
+    /* 注意这个 connection 是客户端与 Nginx 间的连接 */
     ngx_http_run_posted_requests(c);
 }
 
@@ -1559,6 +1569,11 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     u->state->connect_time = (ngx_msec_t) -1;
     u->state->header_time = (ngx_msec_t) -1;
 
+    /* 向上游服务器发起连接，返回：
+     * NGX_OK 表示连接建立成功
+     * NGX_ERROR 表示发生不可逆转的错误
+     * NGX_DECLINED connect 返回非 EINPROGRESS 错误
+     * NGX_AGAIN connect 返回 EINPROGRESS 错误，表示连接正在进行中 */
     rc = ngx_event_connect_peer(&u->peer);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -1579,6 +1594,7 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     }
 
     if (rc == NGX_DECLINED) {
+        /* 若该上游服务器 upstream 有多个地址时，连接下一个地址 */
         ngx_http_upstream_next(r, u, NGX_HTTP_UPSTREAM_FT_ERROR);
         return;
     }
@@ -1591,10 +1607,13 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     c->data = r;
 
+    /* 重新设置读写事件的操作方法，将会在该操作方法中调用下面的 read/write_event_handler */
     c->write->handler = ngx_http_upstream_handler;
     c->read->handler = ngx_http_upstream_handler;
 
+    /* 连接建立成功时，将调用该指向的函数向上游服务器发送请求 */
     u->write_event_handler = ngx_http_upstream_send_request_handler;
+    /* 当上游发送响应时，将会调用该指向的函数接收上游服务器的响应 */
     u->read_event_handler = ngx_http_upstream_process_header;
 
     c->sendfile &= r->connection->sendfile;
@@ -1628,6 +1647,7 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
     u->writer.connection = c;
     u->writer.limit = 0;
 
+    /* 若该标志位为 1，则表示已经向上游服务器发送了全部或部分请求 */
     if (u->request_sent) {
         if (ngx_http_upstream_reinit(r, u) != NGX_OK) {
             ngx_http_upstream_finalize_request(r, u,
@@ -1662,11 +1682,14 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
         r->request_body->buf->tag = u->output.tag;
     }
 
+    /* 重置这些状态标志位 */
     u->request_sent = 0;
     u->request_body_sent = 0;
     u->request_body_blocked = 0;
 
+    /* 表明连接还未建立成功，对于非阻塞套接字，通常在非同一台主机上会出现这种情况 */
     if (rc == NGX_AGAIN) {
+        /* 则将写事件添加到定时器中 */
         ngx_add_timer(c->write, u->conf->connect_timeout);
         return;
     }
@@ -1680,6 +1703,7 @@ ngx_http_upstream_connect(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
 #endif
 
+    /* 连接建立成功，则向上游服务器发送请求 */
     ngx_http_upstream_send_request(r, u, 1);
 }
 
@@ -2033,6 +2057,7 @@ ngx_http_upstream_send_request(ngx_http_request_t *r, ngx_http_upstream_t *u,
     ngx_int_t          rc;
     ngx_connection_t  *c;
 
+    /* 获取与上游服务器间表示连接的 ngx_connection_t 结构体 */
     c = u->peer.connection;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0,
@@ -2172,7 +2197,10 @@ ngx_http_upstream_send_request_body(ngx_http_request_t *r,
     }
 
     if (!u->request_sent) {
+        /* 首次向上游服务器发送请求时，设置 request_sent 标志位为 1，即表明已经开始
+         * 发送请求，也表明已经传递了 request_bufs 缓冲区 */
         u->request_sent = 1;
+        /* 首次发送需要传递 request_bufs 链表构成的请求 */
         out = u->request_bufs;
 
         if (r->request_body->bufs) {
@@ -2197,6 +2225,10 @@ ngx_http_upstream_send_request_body(ngx_http_request_t *r,
     for ( ;; ) {
 
         if (do_write) {
+            /* 调用 ngx_output_chain 方法向上游服务器发送 ngx_http_upstream_t 结构体中
+             * 的 request_bufs 链表，这个方法对于发送缓冲区构成的 ngx_chain_t 链表非常
+             * 有用，它会把未发送完成的链表缓冲区保存下来，这样就不用每次调用时都携带上
+             * request_bufs 链表 */
             rc = ngx_output_chain(&u->output, out);
 
             if (rc == NGX_ERROR) {
@@ -2209,6 +2241,10 @@ ngx_http_upstream_send_request_body(ngx_http_request_t *r,
                 ngx_free_chain(r->pool, ln);
             }
 
+            /* 如果 ngx_output_chain 一次无法发送完所有的 request_bufs 请求内容，
+             * ngx_output_chain_ctx_t 类型的 u->output 会把未发送完的请求保存在
+             * 自己的成员中，同时返回 NGX_AGAIN。当可写事件再次触发时，发送请求
+             * 时就不需要再传递参数了 */
             if (rc == NGX_AGAIN) {
                 u->request_body_blocked = 1;
 
@@ -2261,12 +2297,16 @@ ngx_http_upstream_send_request_handler(ngx_http_request_t *r,
 {
     ngx_connection_t  *c;
 
+    /* 获取与上游服务器间表示连接的 ngx_connection_t 结构体 */
     c = u->peer.connection;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http upstream send request handler");
 
+    /* 写事件的 timeout 为 1 时表示向上游服务器发送的请求已经超时 */
     if (c->write->timedout) {
+        /* 将超时错误传递给 ngx_http_upstream_next 方法，该方法将会根据允许的错误
+         * 重连策略决定：重新发起连接执行 upstream 请求，或者结束 upstream 请求 */
         ngx_http_upstream_next(r, u, NGX_HTTP_UPSTREAM_FT_TIMEOUT);
         return;
     }
@@ -2280,14 +2320,22 @@ ngx_http_upstream_send_request_handler(ngx_http_request_t *r,
 
 #endif
 
+    /* header_sent 标志位为 1 时表明上游服务器的响应需要直接转发给客户端，而且此时
+     * Nginx 已经把响应包头转发给客户端了 */
     if (u->header_sent && !u->conf->preserve_output) {
+        /* 事实上，header_sent 为 1 时一定是已经解析完全部的上游响应包头，并且开始向下游发送
+         * HTTP 的包头了。到此，还不应该继续向上游服务器发送请求的，所以把 write_event_handler
+         * 设为任何工作都没有做的 ngx_http_upstream_dummy_handler 方法 */
         u->write_event_handler = ngx_http_upstream_dummy_handler;
 
+        /* 将写事件添加到 epoll 中 */
         (void) ngx_handle_write_event(c->write, 0);
 
+        /* 因为不存在继续发送请求到上游的可能，所以直接返回 */
         return;
     }
 
+    /* 这里才开始真正执行向上游服务器发送请求 */
     ngx_http_upstream_send_request(r, u, 1);
 }
 
@@ -2314,6 +2362,10 @@ ngx_http_upstream_read_request_handler(ngx_http_request_t *r)
 }
 
 
+/* 该方法主要用于接收、解析响应头部。由于 upstream 机制是不涉及应用层协议的，
+ * 谁使用了 upstream 谁就要负责解析应用层协议，所以必须由 HTTP 模块实现的
+ * process_header 方法解析响应包头。当包头接收、解析完后，该方法还会决定使用
+ * 哪种方式处理包体 */
 static void
 ngx_http_upstream_process_header(ngx_http_request_t *r, ngx_http_upstream_t *u)
 {
