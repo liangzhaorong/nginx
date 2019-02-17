@@ -291,6 +291,7 @@ ngx_handle_read_event(ngx_event_t *rev, ngx_uint_t flags)
             return NGX_OK;
         }
 
+        /* 将读事件从 epoll 中移除 */
         if (rev->active && (rev->ready || (flags & NGX_CLOSE_EVENT))) {
             if (ngx_del_event(rev, NGX_READ_EVENT, NGX_LEVEL_EVENT | flags)
                 == NGX_ERROR)

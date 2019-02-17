@@ -1811,6 +1811,7 @@ ngx_http_send_header(ngx_http_request_t *r)
         return NGX_OK;
     }
 
+    /* 若已经向客户端发送响应头部 */
     if (r->header_sent) {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
                       "header already sent");
@@ -1822,6 +1823,7 @@ ngx_http_send_header(ngx_http_request_t *r)
         r->headers_out.status_line.len = 0;
     }
 
+    /* 发送响应头部 */
     return ngx_http_top_header_filter(r);
 }
 

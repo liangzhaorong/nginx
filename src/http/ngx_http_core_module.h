@@ -474,6 +474,7 @@ struct ngx_http_core_loc_conf_s {
     ngx_http_complex_value_t  *disable_symlinks_from;
 #endif
 
+    /* 由 error_pages 指令指定的针对特定响应码执行相应操作 */
     ngx_array_t  *error_pages;             /* error_page */
 
     ngx_path_t   *client_body_temp_path;   /* client_body_temp_path */
