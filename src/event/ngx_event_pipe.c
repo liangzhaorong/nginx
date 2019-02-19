@@ -564,6 +564,7 @@ ngx_event_pipe_write_to_downstream(ngx_event_pipe_t *p)
     ngx_chain_t       *out, **ll, *cl;
     ngx_connection_t  *downstream;
 
+    /* 获取 nginx 与下游客户端间的连接 */
     downstream = p->downstream;
 
     ngx_log_debug1(NGX_LOG_DEBUG_EVENT, p->log, 0,
@@ -588,6 +589,7 @@ ngx_event_pipe_write_to_downstream(ngx_event_pipe_t *p)
             return ngx_event_pipe_drain_chains(p);
         }
 
+        /* 检查与上游连接是否结束，任一为 1 都表示上游连接不会再收到响应 */
         if (p->upstream_eof || p->upstream_error || p->upstream_done) {
 
             /* pass the p->out and p->in chains to the output filter */
@@ -645,6 +647,7 @@ ngx_event_pipe_write_to_downstream(ngx_event_pipe_t *p)
             break;
         }
 
+        /* 检查下游的写事件是否已经准备好，即可以向下游发送响应 */
         if (downstream->data != p->output_ctx
             || !downstream->write->ready
             || downstream->write->delayed)
@@ -657,6 +660,7 @@ ngx_event_pipe_write_to_downstream(ngx_event_pipe_t *p)
         prev = NULL;
         bsize = 0;
 
+        /* 获取 busy 缓冲区中待发送的响应长度 */
         for (cl = p->busy; cl; cl = cl->next) {
 
             if (cl->buf->recycled) {
@@ -674,6 +678,9 @@ ngx_event_pipe_write_to_downstream(ngx_event_pipe_t *p)
 
         out = NULL;
 
+        /* 检查 busy 缓冲区中待发送响应长度是否超过 busy_size 配置，当达到 
+         * busy_size 长度时，必须等待 busy 缓冲区发送了足够的内容，才能继续
+         * 发送 out 和 in 缓冲区中的内容 */
         if (bsize >= (size_t) p->busy_size) {
             flush = 1;
             goto flush;
@@ -747,6 +754,7 @@ ngx_event_pipe_write_to_downstream(ngx_event_pipe_t *p)
             }
         }
 
+        /* 把 out 链表中的缓冲区发送到下游客户端 */
         rc = p->output_filter(p->output_ctx, out);
 
         ngx_chain_update_chains(p->pool, &p->free, &p->busy, &out, p->tag);

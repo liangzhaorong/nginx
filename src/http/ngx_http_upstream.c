@@ -4442,6 +4442,12 @@ ngx_http_upstream_next(ngx_http_request_t *r, ngx_http_upstream_t *u,
         ft_type |= NGX_HTTP_UPSTREAM_FT_NON_IDEMPOTENT;
     }
 
+    /* 只有当: 
+     * 1. 向这台上游服务器的重试次数 tries 减为 0 时；
+     * 2. 或当出现的 ft_type 错误码不在 proxy_next_upstream 配置指定中的错误码时；
+     * 3. 或
+     * 才会真正地调用 ngx_http_upstream_finalize_request 方法结束请求，否则会再次试图重新与
+     * 上游服务器交互 */
     if (u->peer.tries == 0
         || ((u->conf->next_upstream & ft_type) != ft_type)
         || (u->request_sent && r->request_body_no_buffering)
@@ -4481,6 +4487,7 @@ ngx_http_upstream_next(ngx_http_request_t *r, ngx_http_upstream_t *u,
         return;
     }
 
+    /* 若与上游的 TCP 连接还存在，则关闭 */
     if (u->peer.connection) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "close http upstream connection: %d",
@@ -4503,10 +4510,13 @@ ngx_http_upstream_next(ngx_http_request_t *r, ngx_http_upstream_t *u,
         u->peer.connection = NULL;
     }
 
+    /* 重新发起连接 */
     ngx_http_upstream_connect(r, u);
 }
 
 
+/* 在启动 upstream 机制时，会将该函数挂载到请求的 cleanup 链表中，这样 HTTP
+ * 框架就会在结束请求时调用 ngx_http_upstream_cleanup 方法 */
 static void
 ngx_http_upstream_cleanup(void *data)
 {
@@ -4515,6 +4525,7 @@ ngx_http_upstream_cleanup(void *data)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "cleanup http upstream request: \"%V\"", &r->uri);
 
+    /* 实际是调用该函数来结束请求，传递的是 NGX_DONE 参数 */
     ngx_http_upstream_finalize_request(r, r->upstream, NGX_DONE);
 }
 
@@ -4534,15 +4545,18 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
         return;
     }
 
+    /* 将 cleanup 指向的清理资源回调方法置为 NULL */
     *u->cleanup = NULL;
     u->cleanup = NULL;
 
+    /* 释放解析主机域名时分配的资源 */
     if (u->resolved && u->resolved->ctx) {
         ngx_resolve_name_done(u->resolved->ctx);
         u->resolved->ctx = NULL;
     }
 
     if (u->state && u->state->response_time) {
+        /* 设置当前时间为 HTTP 响应结束时间 */
         u->state->response_time = ngx_current_msec - u->state->response_time;
 
         if (u->pipe && u->pipe->read_length) {
@@ -4552,13 +4566,18 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
         }
     }
 
+    /* 调用 HTTP 模块负责实现的 finalize_request 方法。HTTP 模块可能会在 upstream 
+     * 请求结束时执行一些操作 */
     u->finalize_request(r, rc);
 
+    /* 如果使用 TCP 连接池实现了 free 方法，则调用 free 方法(如 
+     * ngx_http_upstream_free_round_robin_peer)释放连接资源 */
     if (u->peer.free && u->peer.sockaddr) {
         u->peer.free(&u->peer, u->peer.data, 0);
         u->peer.sockaddr = NULL;
     }
 
+    /* 若与上游间的 TCP 连接还存在，则关闭该连接 */
     if (u->peer.connection) {
 
 #if (NGX_HTTP_SSL)
@@ -4601,6 +4620,8 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
     if (u->store && u->pipe && u->pipe->temp_file
         && u->pipe->temp_file->file.fd != NGX_INVALID_FILE)
     {
+        /* 如果使用了磁盘文件作为缓存来向下游转发响应，则需要删除用于
+         * 缓存响应的临时文件 */
         if (ngx_delete_file(u->pipe->temp_file->file.name.data)
             == NGX_FILE_ERROR)
         {
@@ -4641,6 +4662,7 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
 
     r->connection->log->action = "sending to client";
 
+    /* 若还没有向下游客户端发送响应头部或者出现了错误，则结束请求 */
     if (!u->header_sent
         || rc == NGX_HTTP_REQUEST_TIME_OUT
         || rc == NGX_HTTP_CLIENT_CLOSED_REQUEST)
@@ -4677,6 +4699,7 @@ ngx_http_upstream_finalize_request(ngx_http_request_t *r,
         rc = ngx_http_send_special(r, NGX_HTTP_FLUSH);
     }
 
+    /* 最后调用 HTTP 框架提供的方法结束请求 */
     ngx_http_finalize_request(r, rc);
 }
 
