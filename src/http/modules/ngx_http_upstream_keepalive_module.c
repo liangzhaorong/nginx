@@ -79,6 +79,55 @@ static char *ngx_http_upstream_keepalive(ngx_conf_t *cf, ngx_command_t *cmd,
 
 static ngx_command_t  ngx_http_upstream_keepalive_commands[] = {
 
+      /* Syntax:  keepalive connections;
+       * Default: —
+       * Context: upstream
+       *
+       * 激活对上游服务器的连接进行缓存.
+       *
+       * connections 参数设置每个 worker 进程与后端服务器保持空闲连接的最大数量. 这些保持的
+       * 连接会被放入缓存. 如果连接数大于这个值时, 最久未使用的连接会被关闭.
+       *   需要注意的是, keepalive 指令不会限制 nginx 进程与上游服务器的连接总数. 新的连接总会
+       *   按需被创建. connections 参数应该稍微设低一点, 以便上游服务器也能处理额外新进来的连接.
+       *
+       * 配置 memcached 上游服务器连接 keepalive 的例子:
+       *   upstream memcached_backend {
+       *     server 127.0.0.1:11211;
+       *     server 10.0.0.2:11211;
+       *
+       *     keepalive 32;
+       *   }
+       *   
+       *   server {
+       *     ...
+       *
+       *     location /memcached/ {
+       *       set $memcached_key $uri;
+       *       memcached_pass memcached_backend;
+       *     }
+       *   }
+       *
+       * 对于 HTTP 代理, proxy_http_version 指令应该设置为 "1.1", 同时 "Connection" 头的值也应该被清空.
+       *   upstream http_backend {
+       *     server 127.0.0.1:8080;
+       *
+       *     keepalive 16;
+       *   }
+       *
+       *   server {
+       *     ...
+       *
+       *     location /http/ {
+       *       proxy_pass http://http_backend;
+       *       proxy_http_version 1.1;
+       *       proxy_set_header Connection "";
+       *       ...
+       *     }
+       *   }
+       *  另一种选择是, HTTP/1.0 协议的持久连接也可以通过发送 "Connection: Keep-Alive" 头来实现. 不过不建议.
+       * 
+       * 当使用的负载均衡方法不是默认的轮转法时, 必须在 keepalive 指令之前配置.
+       */
     { ngx_string("keepalive"),
       NGX_HTTP_UPS_CONF|NGX_CONF_TAKE1,
       ngx_http_upstream_keepalive,
@@ -86,6 +135,12 @@ static ngx_command_t  ngx_http_upstream_keepalive_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  keepalive_timeout timeout;
+       * Default: keepalive_timeout 60s;
+       * Context: upstream
+       *
+       * 设置超时, 在此期间与上游服务器的空闲 keepalive 连接将保持打开状态.
+       */
     { ngx_string("keepalive_timeout"),
       NGX_HTTP_UPS_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -93,6 +148,12 @@ static ngx_command_t  ngx_http_upstream_keepalive_commands[] = {
       offsetof(ngx_http_upstream_keepalive_srv_conf_t, timeout),
       NULL },
 
+      /* Syntax:  keepalive_requests number;
+       * Default: keepalive_requests 100;
+       * Context: upstream
+       *
+       * 设置可通过一个 keepalive 连接提供的最大请求数. 在达到最大请求数后, 将关闭连接.
+       */
     { ngx_string("keepalive_requests"),
       NGX_HTTP_UPS_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,

@@ -64,7 +64,7 @@ typedef ngx_int_t (*ngx_http_get_variable_pt) (ngx_http_request_t *r,
  * 变量时也是围绕着它进行.
  */
 struct ngx_http_variable_s {
-    // 字符串变量名，如 $remote_addr
+    /* 字符串变量名，如 $remote_addr, 当然不包含 '$' 符号 */
     ngx_str_t                     name;   /* must be first to build the hash */
     /*
      * 如果需要变量最初赋值时就进行变量值的设置，那么可以实现 set_handler 方法。
@@ -78,11 +78,11 @@ struct ngx_http_variable_s {
      * 变量的解析大都在此方法中完成.
      */
     ngx_http_get_variable_pt      get_handler;
-    // 这个整数是作为参数传递给 get_handler、set_handler 回调方法使用
+    /* 这个整数是作为参数传递给 get_handler、set_handler 回调方法使用 */
     uintptr_t                     data;
-    // 变量的特性，见上面的 NGX_HTTP_VAR_*
+    /* 变量的特性，见上面的 NGX_HTTP_VAR_* */
     ngx_uint_t                    flags;
-    // 变量值在请求中的缓存数组中的索引
+    /* 变量值在请求中的缓存数组中的索引 */
     ngx_uint_t                    index;
 };
 

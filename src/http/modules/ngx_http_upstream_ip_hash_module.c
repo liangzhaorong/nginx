@@ -35,6 +35,27 @@ static char *ngx_http_upstream_ip_hash(ngx_conf_t *cf, ngx_command_t *cmd,
 
 static ngx_command_t  ngx_http_upstream_ip_hash_commands[] = {
 
+      /* Syntax:  ip_hash;
+       * Default: —
+       * Context: upstream
+       *
+       * 指定服务器组的负载均衡方法, 请求基于客户端的 IP 地址在服务器间进行分发. IPv4 地址的
+       * 前三个字节或者 IPv6 的整个地址, 会被用来作为一个散列 key. 这种方法可以确保从同一个客户
+       * 端过来的请求, 会被传给同一个服务器. 除了当服务器被认为不可用时, 这些客户端的请求会被
+       * 传给其他服务器, 而且很可能也是同一台服务器.
+       * 
+       * 如果其中一个服务器想暂时移除, 应该加上 down 参数. 这样可以保留当前客户端 IP 地址散列分布.
+       * 示例:
+       *   upstream backend {
+       *     ip_hash;
+       *   
+       *     server backend1.example.com;
+       *     server backend2.example.com;
+       *     server backend3.example.com down;
+       *     server backend4.example.com;
+       *   }
+       *   从 1.3.1 和 1.2.2 版本开始, ip_hash 的负载均衡方法才支持设置服务器权重值.
+       */
     { ngx_string("ip_hash"),
       NGX_HTTP_UPS_CONF|NGX_CONF_NOARGS,
       ngx_http_upstream_ip_hash,

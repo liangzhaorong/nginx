@@ -183,113 +183,161 @@ static ngx_http_variable_t  ngx_http_core_variables[] = {
     { ngx_string("http_cookie"), NULL, ngx_http_variable_cookies,
       offsetof(ngx_http_request_t, headers_in.cookies), 0, 0 },
 
+      /* "Content-Length" 请求头的值 */
     { ngx_string("content_length"), NULL, ngx_http_variable_content_length,
       0, 0, 0 },
 
+      /* "Content-Type" 请求头的值 */
     { ngx_string("content_type"), NULL, ngx_http_variable_header,
       offsetof(ngx_http_request_t, headers_in.content_type), 0, 0 },
 
+      /* 按此优先顺序: 来自请求行的 host 名; 或来自 "Host" 请求头的值; 或请求匹配的 server 名 */
     { ngx_string("host"), NULL, ngx_http_variable_host, 0, 0, 0 },
 
+      /* 客户端 IP 地址的二进制形式, IPv4 地址的值长度为 4 字节, IPv6 地址的值长度为 16 字节 */
     { ngx_string("binary_remote_addr"), NULL,
       ngx_http_variable_binary_remote_addr, 0, 0, 0 },
 
+      /* 客户端 IP 地址 */
     { ngx_string("remote_addr"), NULL, ngx_http_variable_remote_addr, 0, 0, 0 },
 
+      /* 客户端端口号 */
     { ngx_string("remote_port"), NULL, ngx_http_variable_remote_port, 0, 0, 0 },
 
+      /* 来自 PROXY 协议头的客户端地址, 否则为空字符串 
+       * 必须通过在 listen 指令中设置 proxy_protocol 参数来启用 PROXY 协议 */
     { ngx_string("proxy_protocol_addr"), NULL,
       ngx_http_variable_proxy_protocol_addr, 0, 0, 0 },
 
+      /* 来自 PROXY 协议头的客户端端口, 否则为空字符串.
+       * 必须通过在 listen 指令中设置 proxy_protocol 参数来启用 PROXY 协议 */
     { ngx_string("proxy_protocol_port"), NULL,
       ngx_http_variable_proxy_protocol_port, 0, 0, 0 },
 
+      /* 接受请求的服务器地址.
+       * 为计算这个值, 通常需要进行一次系统调用. 为了避免系统调用, 
+       * 必须指定 listen 指令的地址, 并且使用 bind 参数 */
     { ngx_string("server_addr"), NULL, ngx_http_variable_server_addr, 0, 0, 0 },
 
+      /* 接受请求的虚拟主机的端口 */
     { ngx_string("server_port"), NULL, ngx_http_variable_server_port, 0, 0, 0 },
 
+      /* 请求协议, 通常为 "HTTP/1.0", "HTTP/1.1", 或 "HTTP/2.0" */
     { ngx_string("server_protocol"), NULL, ngx_http_variable_request,
       offsetof(ngx_http_request_t, http_protocol), 0, 0 },
 
+      /* 请求协议类型, 为 "http" 或 "https" */
     { ngx_string("scheme"), NULL, ngx_http_variable_scheme, 0, 0, 0 },
 
+      /* 如果连接是 SSL 模块, 返回 "on", 否则返回空字符串 */
     { ngx_string("https"), NULL, ngx_http_variable_https, 0, 0, 0 },
 
+      /* 完整的请求行, 带参数 */
     { ngx_string("request_uri"), NULL, ngx_http_variable_request,
       offsetof(ngx_http_request_t, unparsed_uri), 0, 0 },
 
+      /* 当前请求规范化后的 URI.
+       * 变量 $uri 的值可能随请求的处理过程而变化. 比如, 当进行内部跳转时, 或者使用默认页文件 */
     { ngx_string("uri"), NULL, ngx_http_variable_request,
       offsetof(ngx_http_request_t, uri),
       NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 与 $uri 相同 */
     { ngx_string("document_uri"), NULL, ngx_http_variable_request,
       offsetof(ngx_http_request_t, uri),
       NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 完整的原始请求行 */
     { ngx_string("request"), NULL, ngx_http_variable_request_line, 0, 0, 0 },
 
+      /* 当前请求的 root 指令或 alias 指令的配置值 */
     { ngx_string("document_root"), NULL,
       ngx_http_variable_document_root, 0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 按 root 指令或 alias 指令算出的当前请求的绝对路径. 其中的符号链接都会解析成真实文件路径 */
     { ngx_string("realpath_root"), NULL,
       ngx_http_variable_realpath_root, 0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 与 $args 相同 */
     { ngx_string("query_string"), NULL, ngx_http_variable_request,
       offsetof(ngx_http_request_t, args),
       NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 请求行中参数字符串 */
     { ngx_string("args"),
       ngx_http_variable_set_args,
       ngx_http_variable_request,
       offsetof(ngx_http_request_t, args),
       NGX_HTTP_VAR_CHANGEABLE|NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 如果请求行带有参数, 返回 "?", 否则返回空字符串 */
     { ngx_string("is_args"), NULL, ngx_http_variable_is_args,
       0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 基于 root 指令或 alias 指令, 以及请求 URI, 得到的当前请求的文件路径 */
     { ngx_string("request_filename"), NULL,
       ngx_http_variable_request_filename, 0,
       NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 接受请求的虚拟主机的首要主机名 */
     { ngx_string("server_name"), NULL, ngx_http_variable_server_name, 0, 0, 0 },
 
+      /* 请求方法, 通常为 "GET" 或 "POST" */
     { ngx_string("request_method"), NULL,
       ngx_http_variable_request_method, 0,
       NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 为基本用户认证提供的用户名 */
     { ngx_string("remote_user"), NULL, ngx_http_variable_remote_user, 0, 0, 0 },
 
+      /* nginx 返回给客户端的字节数 */
     { ngx_string("bytes_sent"), NULL, ngx_http_variable_bytes_sent,
       0, 0, 0 },
 
+      /* nginx 返回给客户端的字节数, 不含响应头. 该变量与 mod_log_config Apache 模块
+       * 的 "%B" 参数兼容 */
     { ngx_string("body_bytes_sent"), NULL, ngx_http_variable_body_bytes_sent,
       0, 0, 0 },
 
+      /* 如果请求是管道式的, 则返回 "p", 否则为 "." */
     { ngx_string("pipe"), NULL, ngx_http_variable_pipe,
       0, 0, 0 },
 
+      /* 请求完成时返回 "OK", 否则返回空字符串 */
     { ngx_string("request_completion"), NULL,
       ngx_http_variable_request_completion,
       0, 0, 0 },
 
+      /* 请求正文.
+       * 当请求体被读取到内存缓冲区时, 变量的值在由 proxy_pass, fastcgi_pass, uwsgi_pass 
+       * 和 scgi_pass 指令处理的 location 中可用 */
     { ngx_string("request_body"), NULL,
       ngx_http_variable_request_body,
       0, 0, 0 },
 
+      /* 请求体的临时文件名.
+       * 处理完成时, 临时文件将被移除. 如果希望总是将请求体写入到文件, 需要开启 client_body_in_file_only.
+       * 如果在被代理的请求或 FastCGI/uwsgi/SCGI 请求中传递临时文件名, 就应该禁止传递请求体. 使用
+       * proxy_pass_request_body off, fastcgi_pass_request_body off, uwsgi_pass_request_body off, 或
+       * scgi_pass_request_body off 指令禁止在代理或 FastCGI/uwsgi/SCGI 中传递请求体. */
     { ngx_string("request_body_file"), NULL,
       ngx_http_variable_request_body_file,
       0, 0, 0 },
 
+      /* 请求长度(包括请求行, 请求头, 以及请求体) */
     { ngx_string("request_length"), NULL, ngx_http_variable_request_length,
       0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 请求处理的时间, 单位为秒(分辨率为毫秒); 请求处理时间从由客户端收到第一个字节开始计算 */
     { ngx_string("request_time"), NULL, ngx_http_variable_request_time,
       0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 16 个随机字节生成的唯一请求标识符, 十六进制 */
     { ngx_string("request_id"), NULL,
       ngx_http_variable_request_id,
       0, 0, 0 },
 
+      /* 响应状态码 */
     { ngx_string("status"), NULL,
       ngx_http_variable_status, 0,
       NGX_HTTP_VAR_NOCACHEABLE, 0 },
@@ -321,32 +369,41 @@ static ngx_http_variable_t  ngx_http_core_variables[] = {
     { ngx_string("sent_http_link"), NULL, ngx_http_variable_headers,
       offsetof(ngx_http_request_t, headers_out.link), 0, 0 },
 
+      /* 设置此变量可启用响应速率限制, 参见 limit_rate */
     { ngx_string("limit_rate"), ngx_http_variable_request_set_size,
       ngx_http_variable_request_get_size,
       offsetof(ngx_http_request_t, limit_rate),
       NGX_HTTP_VAR_CHANGEABLE|NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 连接的序列号 */
     { ngx_string("connection"), NULL,
       ngx_http_variable_connection, 0, 0, 0 },
 
+      /* 当前通过连接发出的请求数 */
     { ngx_string("connection_requests"), NULL,
       ngx_http_variable_connection_requests, 0, 0, 0 },
 
+      /* nginx 版本 */
     { ngx_string("nginx_version"), NULL, ngx_http_variable_nginx_version,
       0, 0, 0 },
 
+      /* 主机名 */
     { ngx_string("hostname"), NULL, ngx_http_variable_hostname,
       0, 0, 0 },
 
+      /* worker 进程的 PID */
     { ngx_string("pid"), NULL, ngx_http_variable_pid,
       0, 0, 0 },
 
+      /* 以毫秒为单位的当前时间 */
     { ngx_string("msec"), NULL, ngx_http_variable_msec,
       0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 采用 ISO 8601 标准格式的本地时间 */
     { ngx_string("time_iso8601"), NULL, ngx_http_variable_time_iso8601,
       0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 
+      /* 通用日志格式的本地时间 */
     { ngx_string("time_local"), NULL, ngx_http_variable_time_local,
       0, NGX_HTTP_VAR_NOCACHEABLE, 0 },
 

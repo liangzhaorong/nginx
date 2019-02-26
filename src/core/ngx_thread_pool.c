@@ -62,6 +62,15 @@ static void ngx_thread_pool_exit_worker(ngx_cycle_t *cycle);
 
 static ngx_command_t  ngx_thread_pool_commands[] = {
 
+      /* Syntax:  thread_pool name threads=number [max_queue=number];
+       * Default: thread_pool default threads=32 max_queue=65536;
+       * Context: main 
+       *
+       * 定义用于多线程读取和发送文件而不阻塞 worker 进程的命名线程池.
+       * threads 参数定义池中的线程数.
+       * 如果池中所有线程都忙，则新任务将在队列中等待。max_queue 限制允许在队列中等待的任务数。
+       * 默认情况下，队列最多可以等待 65535 个任务。当队列溢出时，任务将完成并返回 error 错误.
+       */
     { ngx_string("thread_pool"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE23,
       ngx_thread_pool,

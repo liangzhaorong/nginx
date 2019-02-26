@@ -74,6 +74,20 @@ static ngx_conf_num_bounds_t  ngx_http_limit_conn_status_bounds = {
 
 static ngx_command_t  ngx_http_limit_conn_commands[] = {
 
+      /* Syntax:  limit_conn_zone key zone=name:size;
+       * Default: —
+       * Context: http
+       *
+       * 设定保存各个键的状态的共享内存空间的参数. 键的状态中保存了当前连接数. 键的值
+       * 可以是特定变量的任何非空值(空值将不会被考虑). 使用范例:
+       *   limit_conn_zone $binary_remote_addr zone=addr:10m;
+       * 这里, 设置客户端的 IP 地址作为键. 注意, 这里使用的是 $binary_remote_addr 变量, 而不是
+       * $remote_addr 变量. $remote_addr 变量的长度为 7 字节到 15 字节不等, 而存储状态在 32 位
+       * 平台中占用 32 字节或 64 字节, 在 64 位平台中占用 64 字节. 而 $binary_remote_addr 变量
+       * 的长度是固定的 4 字节, 存储状态在 32 位平台占用 32 字节或 64 字节, 在 64 位平台占用 64 
+       * 字节. 一兆字节的共享内存空间可以保存 3.2 个 32 位的状态, 1.6 万个 64 位的状态. 如果共享
+       * 内存空间被耗尽, 服务器将会对后续所有的请求返回 503(Service Temporarily Unavailable) 错误.
+       */
     { ngx_string("limit_conn_zone"),
       NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE2,
       ngx_http_limit_conn_zone,
@@ -81,6 +95,32 @@ static ngx_command_t  ngx_http_limit_conn_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  limit_conn zone number;
+       * Default: —
+       * Context: http, server, location
+       *
+       * 指定一块已经设定的共享内存空间, 以及每个给定键值的最大连接数. 当连接数超过最大连接
+       * 数时, 服务器将返回 503(Service Temporarily Unavailable) 错误. 比如, 如下配置:
+       *   limit_conn_zone $binary_remote_addr zone=addr:10m;
+       *   server {
+       *     location /download/ {
+       *       limit_conn addr 1;
+       *     }
+       * 表示, 同 IP 同一时间只允许有一个连接.
+       *   在 HTTP/2 和 SPDY 中, 每个并发请求被视为单独的连接.
+       * 
+       * 当多个 limit_conn 指令被配置时, 所有的连接数限制都会生效. 比如, 下面配置不仅会限制单一
+       * IP 来源的连接数, 同时也会限制单一虚拟服务器的总连接数:
+       *   limit_conn_zone $binary_remote_addr zone=perip:10m;
+       *   limit_conn_zone $server_name zone=perserver:10m;
+       *   server {
+       *     ...
+       *     limit_conn perip 10;
+       *     limit_conn perserver 100;
+       *
+       * 如果当前配置层级没有 limit_conn 指令, 将会从更高层级继承连接限制配置.
+       *
+       */
     { ngx_string("limit_conn"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE2,
       ngx_http_limit_conn,
@@ -88,6 +128,12 @@ static ngx_command_t  ngx_http_limit_conn_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  limit_conn_log_level info | notice | warn | error;
+       * Default: limit_conn_log_level error;
+       * Context: http, server, location
+       *
+       * 指定当连接数超过设定的最大连接数, 服务器限制连接时的日志等级.
+       */
     { ngx_string("limit_conn_log_level"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_enum_slot,
@@ -95,6 +141,12 @@ static ngx_command_t  ngx_http_limit_conn_commands[] = {
       offsetof(ngx_http_limit_conn_conf_t, log_level),
       &ngx_http_limit_conn_log_levels },
 
+      /* Syntax:  limit_conn_status code;
+       * Default: limit_conn_status 503;
+       * Context: http, server, location
+       *
+       * 设置当达到连接数后而被拒绝的请求响应的状态码.
+       */
     { ngx_string("limit_conn_status"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -121,6 +173,10 @@ static ngx_http_module_t  ngx_http_limit_conn_module_ctx = {
 };
 
 
+/* ngx_http_limit_conn_module 模块可以按照定义的键限定每个键值的连接数. 特别的, 可以设定
+ * 单一 IP 来源的连接数. 
+ * 并不是所有的连接都会被模块计数; 只有那些正在被处理的请求(这些请求的头信息已被完全读入)
+ * 所在的连接才会被计数 */
 ngx_module_t  ngx_http_limit_conn_module = {
     NGX_MODULE_V1,
     &ngx_http_limit_conn_module_ctx,       /* module context */

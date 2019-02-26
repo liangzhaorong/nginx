@@ -482,9 +482,12 @@ typedef struct {
     ngx_uint_t    connections;
     ngx_uint_t    use;
 
+    /* multi_accept 指令 */
     ngx_flag_t    multi_accept;
+    /* accept_mutex 指令 */
     ngx_flag_t    accept_mutex;
 
+    /* accept_mutex_delay 指令 */
     ngx_msec_t    accept_mutex_delay;
 
     u_char       *name;

@@ -20,6 +20,13 @@ static char *ngx_http_upstream_least_conn(ngx_conf_t *cf, ngx_command_t *cmd,
 
 static ngx_command_t  ngx_http_upstream_least_conn_commands[] = {
 
+      /* Syntax:	least_conn;
+       * Default:	—
+       * Context:	upstream
+       *
+       * 指定服务器组的负载均衡方法, 根据其权重值, 将请求发送给活跃连接数最少的那台服务器. 
+       * 如果这样的服务器有多台, 那就采取有权重的轮转法进行尝试.
+       */
     { ngx_string("least_conn"),
       NGX_HTTP_UPS_CONF|NGX_CONF_NOARGS,
       ngx_http_upstream_least_conn,

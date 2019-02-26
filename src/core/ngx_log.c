@@ -33,6 +33,17 @@ typedef struct {
 
 static ngx_command_t  ngx_errlog_commands[] = {
 
+    /* Syntax:  error_log file [level];
+     * Default: error_log logs/error.log error;
+     * Context: main, http, mail, stream, server, location
+     *
+     * 配置日志。
+     * 第一个参数定义了存放日志的文件。如果设置为特殊值 stderr，nginx 会将日志输出到标准错误输出.
+     * 第二个参数定义了日志级别。日志级别如 debug, info, notice, warn, error, crit, alert, or emerg。
+     * 设置为某个日志级别将会使指定级别和更高级别的日志都被记录下来。比如，默认级别 error 会使 nginx
+     * 记录所有 error、crit、alert 和 emerge 级别的消息。如果省略这个参数，nginx 会使用 error.
+     * 为了使 debug 日志工作，需要添加 --with-debug 编译选项.
+     */
     { ngx_string("error_log"),
       NGX_MAIN_CONF|NGX_CONF_1MORE,
       ngx_error_log,

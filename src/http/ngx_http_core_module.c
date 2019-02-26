@@ -226,6 +226,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  connection_pool_size size;
+       * Default: connection_pool_size 256|512;
+       * Context: http, server
+       *
+       * 允许微调为每个链接分配的内存. 这条指令对 nginx 的性能影响非常小, 一般不应该使用.
+       * 默认地, 在 32 位平台下 size 等于 256 字节, 在 64 位平台下 size 等于 512 字节.
+       */
     { ngx_string("connection_pool_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -240,6 +247,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_srv_conf_t, request_pool_size),
       &ngx_http_core_pool_size_p },
 
+      /* Syntax:  client_header_timeout time;
+       * Default: client_header_timeout 60s;
+       * Context: http, server
+       *
+       * 定义读取客户端请求头部的超时. 如果客户端在这段时间内没有传送完整的头部到 nginx, 
+       * nginx 将返回错误 408(Request Time-out) 到客户端.
+       */
     { ngx_string("client_header_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -247,6 +261,15 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_srv_conf_t, client_header_timeout),
       NULL },
 
+      /* Syntax:  client_header_buffer_size size;
+       * Default: client_header_buffer_size 1k;
+       * Context: http, server
+       *
+       * 设置读取客户端请求头部的缓冲容量. 对于大多数请求, 1K 的缓冲足矣. 但如果请求中含有的
+       * cookie 很长, 或者请求来自 WAP 的客户端, 可能请求头不能放在 1K 的缓冲中. 如果从请求行,
+       * 或者某个请求头开始不能完整的放在这块空间中, 那么 nginx 将按照 large_client_header_buffers
+       * 指令的设置分配更大的缓冲来存放. 
+       */
     { ngx_string("client_header_buffer_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -254,6 +277,16 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_srv_conf_t, client_header_buffer_size),
       NULL },
 
+      /* Syntax:  large_client_header_buffers number size;
+       * Default: large_client_header_buffers 4 8k;
+       * Context: http, server
+       *
+       * 设置读取客户端超大请求头的缓冲最大 number(数量)和每块缓冲的 size(容量). HTTP 请求行
+       * 的长度不能超过一块缓冲的容量, 否则 nginx 返回错误 414(Request-URI Too Large) 到客户端.
+       * 每个请求头的长度也不能超过一块缓冲的容量, 否则 nginx 返回错误 400(Bad Request) 到客户端.
+       * 缓冲仅在必需时才分配, 默认每块的容量是 8k 字节. 即使 nginx 处理完请求后与客户端保持长连接,
+       * nginx 也会释放这些缓冲.
+       */
     { ngx_string("large_client_header_buffers"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_TAKE2,
       ngx_conf_set_bufs_slot,
@@ -261,6 +294,15 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_srv_conf_t, large_client_header_buffers),
       NULL },
 
+      /* Syntax:  ignore_invalid_headers on | off;
+       * Default: ignore_invalid_headers on;
+       * Context: http, server
+       *
+       * 控制是否忽略非法请求头字段名. 合法的名字是由英文字母、数字和连字符组成, 当然也可以
+       * 包含下划线(由 underscores_in_headers 指令控制).
+       * 本指令可以在默认虚拟主机的 servere 配置层级中定义一次, 那么这个值在监听相同地址和
+       * 端口的所有虚拟主机上都生效.
+       */
     { ngx_string("ignore_invalid_headers"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -289,6 +331,46 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  listen address[:port] [default_server] [ssl] [http2 | spdy] [proxy_protocol] [setfib=number] 
+       *          [fastopen=number] [backlog=number] [rcvbuf=size] [sndbuf=size] [accept_filter=filter] [deferred] [bind]
+       *          [ipv6only=on|off] [reuseport] [so_keepalive=on|off|[keepidle]:[keepintvl]:[keepcnt]];
+       *
+       *          listen port [default_server] [ssl] [http2 | spdy] [proxy_protocol] [setfib=number] [fastopen=number] 
+       *          [backlog=number] [rcvbuf=size] [sndbuf=size] [accept_filter=filter] [deferred] [bind] [ipv6only=on|off] 
+       *          [reuseport] [so_keepalive=on|off|[keepidle]:[keepintvl]:[keepcnt]];
+       *
+       *          listen unix:path [default_server] [ssl] [http2 | spdy] [proxy_protocol] [backlog=number] [rcvbuf=size] 
+       *          [sndbuf=size] [accept_filter=filter] [deferred] [bind] 
+       *          [so_keepalive=on|off|[keepidle]:[keepintvl]:[keepcnt]];
+       * Default: listen *:80 | *:8000;
+       * Context: server
+       *
+       * 设置 nginx 监听地址, nginx 从这里接受请求. 对于 IP 协议, 这个地址就是 address 和 port; 对于 UNIX 域套接字协议,
+       * 这个地址就是 path. 一条 listen 指令只能指定一个 address 或者 port. address 可以是主机名. 如:
+       *   listen 127.0.0.1:8000;
+       *   listen 127.0.0.1;
+       *   listen 8000;
+       *   listen *:8000;
+       *   listen localhost:8000;
+       * IPv6 地址用方括号来表示:
+       *   listen [::]:8000;
+       *   listen [::1];
+       * UNIX 域套接字则使用 "unix:" 前缀:
+       *   listen unix:/var/run/nginx.sock;
+       * 如果只定义了 address, 则 nginx 默认使用 80 端口.
+       *
+       * 在没有定义 listen 指令的情况下, 如果以超级用户权限运行 nginx, 它将监听 *:80, 否则它将监听 *:8000.
+       * 
+       * 如果 listen 指令携带 default_server 参数, 当前虚拟主机将成为指定 address:port 的默认虚拟主机. 如果任何
+       * listen 指令都没有携带 default_server 参数, 那么第一个监听 address:port 的虚拟主机将被作为这个地址的默认
+       * 虚拟主机.
+       *   0.8.21版以前，这个参数的名称是default。
+       *
+       * ssl 参数允许指定此端口上接受的所有连接都应在 SSL 模式下工作. 这样可以为处理 HTTP 和 HTTPS 请求的服务器
+       * 提供更紧凑的配置.
+       *
+       * 
+       */
     { ngx_string("listen"),
       NGX_HTTP_SRV_CONF|NGX_CONF_1MORE,
       ngx_http_core_listen,
@@ -325,6 +407,12 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  default_type mime-type;
+       * Default: default_type text/plain;
+       * Context: http, server, location
+       *
+       * 定义响应的默认 MIME 类型. 设置文件扩展名和响应的 MIME 类型的映射表则使用 types 指令.
+       */
     { ngx_string("default_type"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -340,6 +428,33 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  alias path;
+       * Default: —
+       * Context: location
+       *
+       * 定义指定 location 的替换路径. 如下面的配置:
+       *   location /i/ {
+       *     alias /data/w3/images/;
+       *   }
+       * "/i/top.gif" 将由 "/data/w3/images/top.gif" 来响应.
+       *
+       * path 的值可以包含变量, 但不能使用 $document_root 和 $realpath_root 这两个变量.
+       *
+       * 如果在定义了正则表达式的路径中使用了 alias, 那么正则表达式中应该含有匹配组, 并且 alias
+       * 应该引用这些匹配组来组成一个完整的文件路径, 如:
+       *   location ~ ^/users/(.+\.(?:gif|jpe?g|png))$ {
+       *     alias /data/w3/images/$1;
+       *   }
+       * 
+       * 当 location 匹配指令值的最后一部分时:
+       *   location /images/ {
+       *     alias /data/w3/images/;
+       *   }
+       * 最好换用 root 指令:
+       *   location /images/ {
+       *     root /data/w3;
+       *   }
+       */
     { ngx_string("alias"),
       NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_core_root,
@@ -347,6 +462,22 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  limit_except method ... { ... }
+       * Default: —
+       * Context: location
+       *
+       * 允许按请求的 HTTP 方法限制对某 location 的请求. method 用于指定不由这些限制条件
+       * 进行过滤的 HTTP 方法, 可选值有 GET, HEAD, POST, PUT, DELETE, MKCOL, OOPY, MOVE,
+       * OPTIONS, PROPFIND, PROPPATCH, LOCK, UNLOCK 和 PATCH. 指定 method 为 GET 方法的
+       * 同时, nginx 会自动添加 HEAD 方法. 那么其他 HTTP 方法的请求就会由指令引导的配置块
+       * 的 ngx_http_access_module, ngx_http_auth_basic_module 以及 ngx_http_auth_jwt_module
+       * 等模块的指令来限制访问. 如:
+       *   limit_except GET {
+       *     allow 192.168.1.0/32;
+       *     deny  all;
+       *   }
+       * 该例子中将对除 GET 和 HEAD 方法以外的所有 HTTP 方法的请求进行访问限制.
+       */
     { ngx_string("limit_except"),
       NGX_HTTP_LOC_CONF|NGX_CONF_BLOCK|NGX_CONF_1MORE,
       ngx_http_core_limit_except,
@@ -354,6 +485,15 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  client_max_body_size size;
+       * Default: client_max_body_size 1m;
+       * Context: http, server, location
+       *
+       * 设置允许客户端请求正文的最大长度. 请求的长度由 "Content-Length" 请求头指定. 如果
+       * 请求的长度超过设定值, nginx 将返回错误 413(Request Entity Too Large) 到客户端. 请
+       * 注意浏览器不能正确显示这个错误. 将 size 设置成 0 可以使 nginx 不检查客户端请求正文
+       * 的长度.
+       */
     { ngx_string("client_max_body_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_off_slot,
@@ -361,6 +501,14 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, client_max_body_size),
       NULL },
 
+      /* Syntax:  client_body_buffer_size size;
+       * Default: client_body_buffer_size 8k|16k;
+       * Context: http, server, location
+       *
+       * 设置读取客户端请求正文的缓冲容量. 如果请求正文大于缓冲容量, 整个正文或者正文的
+       * 一部分将写入临时文件. 缓冲大小默认等于两块内存页的大小, 在 x86 平台、其他 32 位平台
+       * 和 x86-64 平台, 这个值是 8K. 在其他 64 位平台, 这个值一般是 16K.
+       */
     { ngx_string("client_body_buffer_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -368,6 +516,14 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, client_body_buffer_size),
       NULL },
 
+      /* Syntax:  client_body_timeout time;
+       * Default: client_body_timeout 60s;
+       * Context: http, server, location
+       *
+       * 定义读取客户端请求正文的超时. 超时是指相邻两次读操作之间的最大时间间隔, 而不是整个请求
+       * 正文完成传输的最大时间. 如果客户端在这段时间内没有传输任何数据, nginx 将返回 408(Request Time-out)
+       * 错误到客户端.
+       */
     { ngx_string("client_body_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -375,6 +531,16 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, client_body_timeout),
       NULL },
 
+      /* Syntax:  client_body_temp_path path [level1 [level2 [level3]]];
+       * Default: client_body_temp_path client_body_temp;
+       * Context: http, server, location
+       *
+       * 定义存储客户端请求正文的临时文件的目录. 支持在指定目录下多达 3 层的子目录结构. 比如下面
+       * 配置:
+       *   client_body_temp_path /spool/nginx/client_temp 1 2;
+       * 存储临时文件的目录是:
+       *   /spool/nginx/client_temp/7/45/00000123457
+       */
     { ngx_string("client_body_temp_path"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234,
       ngx_conf_set_path_slot,
@@ -382,6 +548,16 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, client_body_temp_path),
       NULL },
 
+      /* Syntax:  client_body_in_file_only on | clean | off;
+       * Default: client_body_in_file_only off;
+       * Context: http, server, location
+       *
+       * 决定 nginx 是否将客户端请求正文整个写入文件. 这条指令在调试时, 或者使用 $request_body_file
+       * 变量时, 或者使用 ngx_http_perl_module 模块的 $r->request_body_file 方法时都可以使用.
+       * 
+       * 当指令值设置为 on 时, 请求结束后不会删除临时文件.
+       * 当指令设置为 clean 时, 请求结束后会删除临时文件.
+       */
     { ngx_string("client_body_in_file_only"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_enum_slot,
@@ -389,6 +565,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, client_body_in_file_only),
       &ngx_http_core_request_body_in_file },
 
+      /* Syntax:  client_body_in_single_buffer on | off;
+       * Default: client_body_in_single_buffer off;
+       * Context: http, server, location
+       *
+       * 决定 nginx 是否将整个客户端请求正文保存在一块缓冲中. 这条指令推荐在使用 $request_body 
+       * 变量时使用, 可以节省引入的拷贝操作.
+       */
     { ngx_string("client_body_in_single_buffer"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -418,6 +601,52 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, subrequest_output_buffer_size),
       NULL },
 
+      /* Syntax:  aio on | off | threads[=pool];
+       * Default: aio off;
+       * Context: http, server, location 
+       *
+       * 在 FreeBSD 和 Linux 上启用或禁用异步文件I/O(AIO).
+       *   location /video/ {
+       *     aio            on;
+       *     output_buffers 1 64k;
+       *   }
+       *
+       * 在 FreeBSD 上，可以从 FreeBSD 4.3 开始使用AIO。在 FreeBSD 11.0 之前，AIO 可以静态
+       * 连接到内核:
+       *   options VFS_AIO
+       * 或作为内核可加载模块动态加载:
+       *   kldload aio
+       * 
+       * 在 Linux 上，可以从内核版本 2.6.22 开始使用 AIO。此外，必须启用 directio，否则读取将被阻塞:
+       *   location /video/ {
+       *     aio            on;
+       *     directio       512;
+       *     output_buffers 1 128k;
+       *   }
+       * 在 Linux 上，directio 只在读取的块的边界对齐 512 字节(在 XFS 上是 4k 字节)时才有用。在读取
+       * 文件尾部时，如果没有对齐，AIO 读取还是阻塞的。同样的情况(如果数据的开始或结尾未对齐时，读取
+       * 也是阻塞的)也发生在含有 "byte range" 头的请求中，或者发生在不是从头开始的 FLV 请求中.
+       *
+       * 当同时启用 AIO 和 sendfile 时，AIO 用于大于或等于 directio 指令中指定大小的文件，而 sendfile 
+       * 用于较小大小的文件或禁用 directio 时.
+       *   location /video/ {
+       *     sendfile       on;
+       *     aio            on;
+       *     directio       8m;
+       *  }
+       * 
+       * 最后，可以使用多线程读取或发送文件，而不会阻塞 worker 进程:
+       *   location /video/ {
+       *     sendfile       on;
+       *     aio            threads;
+       *   }
+       * 读取和发送文件操作将 offload(卸载)到指定的 pool 的线程中。如果省略 pool 名称，则使用名称为
+       * "default" 的 pool。pool 名称也可以使用变量指定:
+       *   aio threads=pool$disk;
+       * 默认情况下，禁用多线程，应使用 --with-threads 配置参数启用它。目前，多线程仅与 epoll，kqueue
+       * 和 eventport 方法兼容。目前，仅在 Linux 上支持多线程文件发送.
+       * 参见 sendfile 指令.
+       */
     { ngx_string("aio"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_core_set_aio,
@@ -425,6 +654,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  aio_write on | off;
+       * Default: aio_write off;
+       * Context: http, server, location
+       *
+       * 如果启用了 aio，则指定是否用于写入文件。目前，这仅在使用 aio 线程时有效，并且仅限于将
+       * 从代理服务器接收的数据写入到临时文件.
+       */
     { ngx_string("aio_write"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -439,6 +675,16 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, read_ahead),
       NULL },
 
+      /* Syntax:  directio size | off;
+       * Default: directio off;
+       * Context: http, server, location
+       *
+       * 当读入长度大于等于指定 size 的文件时, 开启 DirectIO 功能. 具体的做法是, 在 FreeBSD 系统
+       * 开启使用 O_REDICT 标志, 在 Mac OS X 系统开启使用 F_NOCACHE 标志, 在 Solaris 系统开启使用
+       * directio() 功能. 这条指令自动关闭 sendfile. 它在处理大文件时:
+       *   directio 4m;
+       * 或者在 Linux 系统使用 aio 时比较有用.
+       */
     { ngx_string("directio"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_core_directio,
@@ -446,6 +692,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  directio_alignment size;
+       * Default: directio_alignment 512;
+       * Context: http, server, location
+       *
+       * 为 directio 设置文件偏移量对齐. 大多数情况下, 按 512 直接对齐足矣, 但在 Linux 系统下使用
+       * XFS, 需要将值扩大至 4K.
+       */
     { ngx_string("directio_alignment"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_off_slot,
@@ -488,6 +741,25 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, postpone_output),
       NULL },
 
+      /* Syntax:  limit_rate rate;
+       * Default: limit_rate 0;
+       * Context: http, server, location, if in location
+       *
+       * 限制向客户端传送响应的速率限制. 参数 rate 的单位是字节/秒, 设置为 0 将关闭限速, 所以
+       * 如果某个客户端同时开启了两个连接, 那么客户端的整体速率是这条指令设置值的 2 倍.
+       *
+       * 也可以利用 $limit_rate 变量设置流量限制. 如果想在特定条件下限制响应传输速率, 可以使用这个
+       * 功能:
+       *   server {
+       *     if ($slow) {
+       *       set $limit_rate 4k;
+       *     }
+       *     ...
+       *   }
+       *
+       * 此外, 也可以通过 "X-Accel-Redirect" 响应头来完成速率限制. 这种机制可以用 proxy_ignore_headers,
+       * fastcgi_ignore_headers, uwscgi_ignore_headers, 以及 scgi_ignore_headers 等指令关闭.
+       */
     { ngx_string("limit_rate"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF
                         |NGX_CONF_TAKE1,
@@ -496,6 +768,18 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, limit_rate),
       NULL },
 
+      /* Syntax:  limit_rate_after size;
+       * Default: limit_rate_after 0;
+       * Context: http, server, location, if in location
+       *
+       * 设置不进行限速传输的响应大小. 当传输值大于此值时, 超出部分将限速传送.
+       * 如:
+       *   location /flv/ {
+       *     flv;
+       *     limit_rate_after 500k;
+       *     limit_rate       50k;
+       *   }
+       */
     { ngx_string("limit_rate_after"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF
                         |NGX_CONF_TAKE1,
@@ -504,6 +788,16 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, limit_rate_after),
       NULL },
 
+      /* Syntax:  keepalive_timeout timeout [header_timeout];
+       * Default: keepalive_timeout 75s;
+       * Context: http, server, location
+       *
+       * 第一个参数设置客户端的长连接在服务器端保持的最长时间(在此时间客户端未发起新请求, 则长连接
+       * 关闭). 第二个参数为可选项, 设置 "Keep-Alive:timeout=time" 响应头的值. 可以为这两个参数设置
+       * 不同的值.
+       * "Keep-Alive:timeout=time" 响应头可以被 Mozilla 和 Konqueror 浏览器识别和处理. MSIE 浏览器
+       * 在大约 60 秒后关闭长连接.
+       */
     { ngx_string("keepalive_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
       ngx_http_core_keepalive,
@@ -511,6 +805,12 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  keepalive_requests number;
+       * Default: keepalive_requests 100;
+       * Context: http, server, location
+       *
+       * 设置通过一个长连接可以处理的最大请求数. 请求超过此值, 长连接将关闭.
+       */
     { ngx_string("keepalive_requests"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -532,6 +832,26 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, satisfy),
       &ngx_http_core_satisfy },
 
+      /* Syntax:  internal;
+       * Default: —
+       * Context: location
+       *
+       * 指定一个 location 是否只能用于内部访问. 如果是外部访问, 客户端将收到 404(Not Found)
+       * 错误. 下列请求是内部请求:
+       *   - 由 error_page 指令、index 指令、random_index 指令和 try_files 指令引起的重定向请求;
+       *   - 由后端服务器返回的 "X-Accel-Redirect" 响应头引起的重定向请求;
+       *   - 由 ngx_http_ssi_module 模块和 ngx_http_addition_module 模块的 "include virtual" 指令产生的子请求;
+       *   - 用 rewrite 指令对请求进行修改.
+       * 如:
+       *   error_page 404 /404.html;
+       *   location /404.html {
+       *     internal;
+       *   }
+       *
+       * nginx 限制每个请求只能最多进行 10 次内部重定向, 以防配置错误引起请求处理出现问题. 如果内部重定向次数
+       * 已达 10 次, nginx 将返回 500(Internal Server Error)错误. 同时, 错误日志将有 "rewrite or internal 
+       * redirection cycle" 的信息.
+       */
     { ngx_string("internal"),
       NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
       ngx_http_core_internal,
@@ -539,6 +859,20 @@ static ngx_command_t  ngx_http_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  lingering_close off | on | always;
+       * Default: lingering_close on;
+       * Context: http, server, location
+       *
+       * 控制 nginx 如何关闭客户端连接.
+       * 
+       * 默认值 "on" 指示 nginx 在完成关闭连接前等待和处理客户端发来的额外数据. 但只有在预测客户端可能
+       * 发送更多数据的情况才会做此处理.
+       * 
+       * "always" 指示 nginx 无条件等待和处理客户端的额外数据.
+       * 
+       * "off" 指示 nginx 立即关闭连接, 而绝不等待客户端传送的额外数据. 这样做破坏了协议, 所以正常条件
+       * 下不应使用.
+       */
     { ngx_string("lingering_close"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_enum_slot,
@@ -546,6 +880,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, lingering_close),
       &ngx_http_core_lingering_close },
 
+      /* Syntax:  lingering_time time;
+       * Default: lingering_time 30s;
+       * Context: http, server, location
+       *
+       * lingering_close 生效时, 这条指令定义 nginx 处理(读取但忽略)客户端额外数据的最长时间. 
+       * 超过这段时间后, nginx 将关闭连接, 不论是否还有更多数据待处理.
+       */
     { ngx_string("lingering_time"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -553,6 +894,14 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, lingering_time),
       NULL },
 
+      /* Syntax:  lingering_timeout time;
+       * Default: lingering_timeout 5s;
+       * Context: http, server, location
+       *
+       * lingering_close 生效时, 这条指令定义 nginx 等待客户端更多数据到来的最长时间. 如果在这段时间内,
+       * nginx 没有接收到数据, nginx 将关闭连接. 否则, nginx 将接收数据, 忽略它, 然后再等待更多的数据.
+       * 这个 "等待--接收--忽略" 的循环一直重复, 但总时间不会超过 lingering_time 指令定义的时间.
+       */
     { ngx_string("lingering_timeout"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -567,6 +916,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, reset_timedout_connection),
       NULL },
 
+      /* Syntax:  absolute_redirect on | off;
+       * Default: absolute_redirect on;
+       * Context: http, server, location
+       *
+       * 如果禁止绝对重定向，nginx 发出的重定向将会是相对的.
+       * 参见 server_name_in_redirect 和 port_in_redirect 指令.
+       */
     { ngx_string("absolute_redirect"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -630,6 +986,18 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, server_tokens),
       &ngx_http_core_server_tokens },
 
+      /* Syntax:  if_modified_since off | exact | before;
+       * Default: if_modified_since exact;
+       * Context: http, server, location
+       *
+       * 指定响应的修改时间和 "If-Modified-Since" 请求头的比较方法:
+       * off
+       *     忽略 "If-Modified-Since" 请求头
+       * exact
+       *     精确匹配
+       * before
+       *     响应的修改时间小于等于 "If-Modified-Since" 请求头指定的时间
+       */
     { ngx_string("if_modified_since"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_enum_slot,
@@ -644,6 +1012,13 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, max_ranges),
       NULL },
 
+      /* Syntax:  chunked_transfer_encoding on | off;
+       * Default: chunked_transfer_encoding on;
+       * Context: http, server, location
+       *
+       * 允许关闭 HTTP/1.1 中的分块传输编码. 在客户端软件不支持分块传输编码的时候, 这条
+       * 指令才有用.
+       */
     { ngx_string("chunked_transfer_encoding"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -651,6 +1026,12 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, chunked_transfer_encoding),
       NULL },
 
+      /* Syntax:  etag on | off;
+       * Default: etag on;
+       * Context: http, server, location
+       *
+       * 开启或关闭为静态文件自动计算 "ETag" 响应头.
+       */
     { ngx_string("etag"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -658,6 +1039,43 @@ static ngx_command_t  ngx_http_core_commands[] = {
       offsetof(ngx_http_core_loc_conf_t, etag),
       NULL },
 
+      /* Syntax:  error_page code ... [=[response]] uri;
+       * Default: —
+       * Context: http, server, location, if in location
+       *
+       * 为指定的错误定义将要被显示的 URI. uri 可以包含变量:
+       * 如:
+       *   error_page 404             /404.html;
+       *   error_page 500 502 503 504 /50x.html;
+       * 这将导致内部重定向到指定的 uri, 客户端请求方法更改为 "GET"(对于 "GET" 和 "HEAD" 以外
+       * 的所有方法).
+       * 
+       * 而且, 可以使用 "=response" 语法改变响应的状态码. 如:
+       *   error_page 404 =200 /empty.gif;
+       * 
+       * 如果 URI 将被发送到一个被代理的服务器处理, 或者发送到一个 FastCGI/uwsgi/SCGI/gRPC 服务器处理,
+       * 这些后端服务器又返回了不同的响应状态码(如 200, 302, 401 or 404), 那么这些返回的状态码也可以由
+       * 本指令处理:
+       *   error_page 404 = /404.php;
+       *
+       * 如果在内部重定向期间无需更改 URI 和方法, 则可以将错误处理传递到命令的 location:
+       *   location / {
+       *     error_page 404 = @fallback;
+       *   }
+       *   location @fallback {
+       *     proxy_pass http://backend;
+       *   }
+       * 
+       * 如果处理 uri 产生了错误, 那么 nginx 将最后一次出错的 HTTP 响应状态码返回给客户端.
+       * 
+       * 当然, 也可以使用本指令对错误处理进行重定向:
+       *   error_page 403      http://example.com/forbidden.html;
+       *   error_page 404 =301 http://example.com/notfound.html;
+       * 在这种情况下, 将返回客户端响应状态码 302. 它只能更改为重定向状态码之一
+       *  (301, 302, 303, 307, and 308).
+       *
+       * 当前配置级别没有 error_page 指令时, 将从上层配置继承.
+       */
     { ngx_string("error_page"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF
                         |NGX_CONF_2MORE,
@@ -764,6 +1182,32 @@ static ngx_command_t  ngx_http_core_commands[] = {
 
 #if (NGX_HAVE_OPENAT)
 
+      /* Syntax:  disable_symlinks off;
+       *          disable_symlinks on | if_not_owner [from=part];
+       * Default: disable_symlinks off;
+       * Context: http, server, location
+       *
+       * 决定 nginx 打开文件时如何处理符号链接:
+       * off
+       *     默认行为, 允许路径中出现符号链接, 不做检查.
+       * on
+       *     如果文件路径中任何组成部分中含有符号链接, 拒绝访问该文件.
+       * if_not_owner
+       *     当 nginx 进行符号链接检查时(参数 on 和参数 if_not_owner), 路径中所有部分默认都会
+       * 被检查. 而使用 from=part 参数可以避免对路径开始部分进行符号链接检查, 而只检查后面的部分
+       * 路径. 如果某路径不是以指定值开始, 整个路径将被检查, 就如同没有指定这个参数一样. 如果某
+       * 路径与指定值完全匹配, 将不做检查. 这个参数的值可以包含变量.
+       * 比如:
+       *     disable_symlinks on from=$document_root;
+       * 
+       * 这条指令只在有 openat() 和 fstatat() 接口的系统上可用. 当然, 现在的 FreeBSD、Linux 和 Solaris
+       * 都支持这些接口.
+       * 参数 on 和 if_not_owner 会带来处理开销.
+       *
+       *   只在那些不支持打开目录查找文件的系统中, 使用这些参数需要 worker 进程有这些被检查目录的读权限.
+       *   ngx_http_autoindex_module 模块, ngx_http_random_index_module 模块和 ngx_http_dav_module 模块
+       * 目前忽略这条指令.
+       */
     { ngx_string("disable_symlinks"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE12,
       ngx_http_disable_symlinks,

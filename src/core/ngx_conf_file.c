@@ -18,6 +18,16 @@ static void ngx_conf_flush_files(ngx_cycle_t *cycle);
 
 static ngx_command_t  ngx_conf_commands[] = {
 
+      /* Syntax:	include file | mask;
+       * Default:	—
+       * Context:	any
+       * 
+       * 将另一个 file，或者匹配指定 mask 的文件，包含到配置中。被包含的文件应由
+       * 语法正确的指令和块组成.
+       * 使用示例:
+       *     include mime.types;
+       *     include vhosts/*.conf;
+       */
     { ngx_string("include"),
       NGX_ANY_CONF|NGX_CONF_TAKE1,
       ngx_conf_include,

@@ -97,6 +97,7 @@ struct io_event {
 
 typedef struct {
     ngx_uint_t  events;
+    /* worker_aio_requests 指令 */
     ngx_uint_t  aio_requests;
 } ngx_epoll_conf_t;
 
@@ -165,6 +166,13 @@ static ngx_command_t  ngx_epoll_commands[] = {
       offsetof(ngx_epoll_conf_t, events),
       NULL },
 
+      /* Syntax:  worker_aio_requests number;
+       * Default: worker_aio_requests 32;
+       * Context: events
+       *
+       * 在使用 epoll 连接处理方式的情况下使用 aio 时，可以设置单个 worker 进程未处理的
+       * 异步 I/O 操作的最大 number(数量).
+       */
     { ngx_string("worker_aio_requests"),
       NGX_EVENT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,

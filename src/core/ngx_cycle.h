@@ -119,18 +119,26 @@ struct ngx_cycle_s {
 
 
 typedef struct {
+    /* daemon 指令 */
     ngx_flag_t                daemon;
+    /* master_process 指令 */
     ngx_flag_t                master;
 
+    /* timer_resolution 指令 */
     ngx_msec_t                timer_resolution;
+    /* worker_shutdown_timeout 指令 */
     ngx_msec_t                shutdown_timeout;
 
     ngx_int_t                 worker_processes;
+    /* debug_points 指令 */
     ngx_int_t                 debug_points;
 
+    /* worker_rlimit_nofile 指令 */
     ngx_int_t                 rlimit_nofile;
+    /* worker_rlimit_core 指令 */
     off_t                     rlimit_core;
 
+    /* worker_priority 指令 */
     int                       priority;
 
     ngx_uint_t                cpu_affinity_auto;
@@ -138,15 +146,20 @@ typedef struct {
     ngx_cpuset_t             *cpu_affinity;
 
     char                     *username;
+    /* user 指令 */
     ngx_uid_t                 user;
     ngx_gid_t                 group;
 
+    /* working_directory 指令 */
     ngx_str_t                 working_directory;
+    /* lock_file 指令 */
     ngx_str_t                 lock_file;
 
+    /* pid 指令 */
     ngx_str_t                 pid;
     ngx_str_t                 oldpid;
 
+    /* env 指令 */
     ngx_array_t               env;
     char                    **environment;
 

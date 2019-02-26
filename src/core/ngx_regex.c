@@ -10,6 +10,7 @@
 
 
 typedef struct {
+    /* pcre_jit 指令 */
     ngx_flag_t  pcre_jit;
 } ngx_regex_conf_t;
 
@@ -31,6 +32,16 @@ static ngx_conf_post_t  ngx_regex_pcre_jit_post = { ngx_regex_pcre_jit };
 
 static ngx_command_t  ngx_regex_commands[] = {
 
+      /* Syntax: pcre_jit on | off;
+       * Default: pcre_jit off;
+       * Context: main
+       *
+       * 开启或禁止在配置解析阶段为正则表达式使用 "即时编译"(PCRE JIT)技术。
+       * PCRE JIT 可以显著提升处理正则表达式的速度.
+       *   从 PCRE 8.20 版本开始，可用 PCRE 的 --enable-jit 编译选项来打开 JIT 功能。
+       * 当使用 PCRE 源码库编译 nginx 时(--with-pcre=)，应该使用 nginx 的 --with-pcre-jit 
+       * 编译选项开启 JIT 支持.
+       */
     { ngx_string("pcre_jit"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,

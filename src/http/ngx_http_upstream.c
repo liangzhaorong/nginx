@@ -330,6 +330,25 @@ static ngx_http_upstream_header_t  ngx_http_upstream_headers_in[] = {
 
 static ngx_command_t  ngx_http_upstream_commands[] = {
 
+      /* Syntax:  upstream name { ... }
+       * Default: —
+       * Context: http
+       *
+       * 定义一组服务器. 这些服务器可以监听不同的端口. 而且, 监听在 TCP 和 UNIX 域套接字
+       * 的服务器可以混用.
+       * 如:
+       *   upstream backend {
+       *     server backend1.example.com weight=5;
+       *     server 127.0.0.1:8080       max_fails=3 fail_timeout=30s;
+       *     server unix:/tmp/backend3;
+       *
+       *     server backup1.example.com  backup;
+       *   }
+       * 默认情况下, nginx 按加权轮转的方式将请求分发到各服务器. 在上面的例子中, 每 7 个请求会通过
+       * 以下方式分发: 5 个请求分到 backend1.example.com, 一个请求分到第二个服务器, 一个请求分到第
+       * 三个服务器. 与服务器通信的时候, 如果出现错误, 请求将被传给下一个服务器, 直到所有可用的服务器
+       * 都被尝试过. 如果所有服务器都返回失败, 客户端将会得到最后通信的那个服务器的(失败)响应结果.
+       */
     { ngx_string("upstream"),
       NGX_HTTP_MAIN_CONF|NGX_CONF_BLOCK|NGX_CONF_TAKE1,
       ngx_http_upstream,
@@ -337,6 +356,74 @@ static ngx_command_t  ngx_http_upstream_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  server address [parameters];
+       * Default: —
+       * Context: upstream
+       *
+       * 定义服务器的地址 address 和其他参数 parameters. 地址可以是域名或 IP 地址, 端口是可选的, 
+       * 或者是指定 "unix:" 前缀的 UNIX 域套接字的路径. 如果没有指定端口, 就使用 80 端口. 如果
+       * 一个域名解析到多个 IP, 本质上是定义了多个 server.
+       * 可以定义如下参数:
+       * weigth=number
+       *     设定服务器的权重, 默认是 1.
+       * max_conns=number
+       *     限制与代理服务器的最大并发连接数. 默认值为零, 表示没有限制. 如果服务器组不驻留在
+       *     共享内存中, 则对每个 worker 进程的限制都有效.
+       *   如果启用了 idle keepalive 连接, 多个 worker, 以及共享内存, 则代理服务器的活动和空闲
+       *   连接总数可能会超过 max_conns 的值.
+       * max_fails=number
+       *     设定 nginx 与服务器通信的尝试失败的次数. 在 fail_timeout 参数定义的时间段内, 如果失败
+       *     的次数达到此值, nginx 就认为服务器不可用. 在下一个 fail_timeout 时间段, 服务器不会再被
+       *     尝试. 失败的尝试次数默认为 1. 设为 0 就会停止统计尝试次数, 认为服务器是一直可用的. 可以
+       *     通过指令 proxy_next_upstream, fastcgi_next_upstream, uwsgi_next_upstream, scgi_next_upstream,
+       *      memcached_next_upstream, 以及 grpc_next_upstream 来配置什么是失败的尝试. 默认配置时, 
+       *     http_404 状态不被认为是失败的尝试.
+       * fail_timeout=time
+       *     设定:
+       *       - 统计失败尝试次数的时间段. 在这段时间中, 服务器失败次数达到指定的尝试次数, 服务器就被认为不可用.
+       *       - 服务器被认为不可用的时间段.
+       *     默认情况下, 该超时时间是 10 秒.
+       * backup
+       *     标记为备用服务器. 当主服务器不可用时, 请求就会被传给这些服务器.
+       * down
+       *     标记服务器永久不可用, 可以跟 ip_hash 指令一起使用.
+       * resolve
+       *     监视与服务器域名对应的 IP 地址的更改, 并自动修改 upstream 配置, 而无需重新启动 nginx. 服务器组
+       *     必须驻留在共享内存中.
+       *     要使此参数起作用, 必须在 http {} 中指定 resolver 指令. 如:
+       *       http {
+       *         resolver 10.0.0.1;
+       *         upstream u {
+       *           zone ...;
+       *           ...
+       *           server example.com resolve;
+       *         }
+       *       }
+       *
+       * route=string
+       *     设置服务器路由名称.
+       * service=name
+       *     启用解析 DNS SRV 记录并设置 service 名称. 要使此参数起作用, 必须为服务器指定 resolve 参数并指定
+       *     不带端口号的主机名.
+       *     如果 service 名称不包含 ".", 则构造符合 RFC 的名称, 并将 TCP 协议添加到 service 前缀. 如, 要查找
+       *     _http._tcp.backend.example.com SRV 记录, 必须指定该指令:
+       *         server backend.example.com service=http resolve;
+       *     如果 service 名称包含一个或多个 ".", 则通过加入到 service 前缀和服务器名来构造名称. 如, 要查找
+       *     _http._tcp.backend.example.com 和 server1.backend.example.com SRV 记录, 必须指定该指令:
+       *         server backend.example.com service=_http._tcp resolve;
+       *         server example.com service=server1.backend resolve;
+       *     最高优先级的 SRV 记录(具有相同最低优先级值的记录)被解析为主服务器, 其余 SRV 记录被解析为备服务器.
+       *     如果服务器指定了 backup 参数, 则最高优先级 SRV 记录将解析为备服务器, 其余 SRV 记录将被忽略.
+       * slow_start=time
+       *     设置服务器将其权重从零恢复到标称值的时间(time), 当不健康的服务器变得健康, 或者服务器在一段时间
+       *     被认为不可用后变得可用时. 默认值为零, 即禁用慢启动.
+       *     该参数不可以与 hash 和 ip_hash 负载平衡方法一起使用.
+       * drain
+       *     使服务器进入 "drain" 模式. 在此模式下, 只有绑定到服务器的请求才会被代理.
+       * 
+       * 如果组中只有一个服务器, 则忽略 max_fails, fail_timeout 和 slow_start 参数, 并且永远不会将此类服务器
+       * 视为不可用.
+       */
     { ngx_string("server"),
       NGX_HTTP_UPS_CONF|NGX_CONF_1MORE,
       ngx_http_upstream_server,

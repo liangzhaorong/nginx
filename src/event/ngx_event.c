@@ -80,6 +80,12 @@ ngx_atomic_t         *ngx_stat_waiting = &ngx_stat_waiting0;
 
 static ngx_command_t  ngx_events_commands[] = {
 
+      /* Syntax:	events { ... }
+       * Default:	—
+       * Context:	main
+       *
+       * 提供配置上下文，以解析那些影响连接处理的指令.
+       */
     { ngx_string("events"),
       NGX_MAIN_CONF|NGX_CONF_BLOCK|NGX_CONF_NOARGS,
       ngx_events_block,
@@ -119,6 +125,15 @@ static ngx_str_t  event_core_name = ngx_string("event_core");
 
 static ngx_command_t  ngx_event_core_commands[] = {
 
+      /* Syntax:  worker_connections number;
+       * Default: worker_connections 512;
+       * Context: events 
+       *
+       * 设置每个 worker 进程可以打开的最大并发连接数。
+       * 需要记住，这个数量包含所有连接(比如，和后端服务器建立的连接，还有其他的)，而不仅仅是
+       * 和客户端的连接。另外需要考虑的是，实际的并发连接数是不能超过打开文件的最大数量限制的，
+       * 这个限制可以用 worker_rlimit_nofile 指令修改.
+       */
     { ngx_string("worker_connections"),
       NGX_EVENT_CONF|NGX_CONF_TAKE1,
       ngx_event_connections,
@@ -126,6 +141,12 @@ static ngx_command_t  ngx_event_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  use method;
+       * Default: —
+       * Context: events
+       *
+       * 指定使用的连接处理 method(方式)。通常不需要明确设置，因为 nginx 默认会使用最高效的方法.
+       */
     { ngx_string("use"),
       NGX_EVENT_CONF|NGX_CONF_TAKE1,
       ngx_event_use,
@@ -133,6 +154,15 @@ static ngx_command_t  ngx_event_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  multi_accept on | off;
+       * Default: multi_accept off;
+       * Context: events
+       *
+       * 关闭时，worker 进程一次只会接入一个新连接。否则，worker 进程一次会将所有新连接
+       * 全部接入.
+       * 使用 kqueue 连接处理方式时，可忽略这条指令，因为 kqueue 可以报告有多少新连接等待接入.
+       * 使用 rsig 连接处理方式将自动开启 multi_accept.
+       */
     { ngx_string("multi_accept"),
       NGX_EVENT_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -140,6 +170,14 @@ static ngx_command_t  ngx_event_core_commands[] = {
       offsetof(ngx_event_conf_t, multi_accept),
       NULL },
 
+      /* Syntax:  accept_mutex on | off;
+       * Default: accept_mutex off;
+       * Context: events
+       * 
+       * 如果使用，nginx 的多个 worker 进程将以串行方式接入连接。否则，新连接将通报给所有工作
+       * 进程，而且如果新连接数量较少，某些 worker 进程可能只是在浪费系统资源.
+       * 必须开启 accept_mutex 才能使用 rsig 连接处理方式.
+       */
     { ngx_string("accept_mutex"),
       NGX_EVENT_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -147,6 +185,13 @@ static ngx_command_t  ngx_event_core_commands[] = {
       offsetof(ngx_event_conf_t, accept_mutex),
       NULL },
 
+      /* Syntax:  accept_mutex_delay time;
+       * Default: accept_mutex_delay 500ms;
+       * Context: events
+       *
+       * 使用 accept_mutex 时，可以指定某个 worker 进程检测到其它 worker 进程正在接入新连接时，
+       * 自身等待直到重新开始尝试接入新连接的最大时间间隔.
+       */
     { ngx_string("accept_mutex_delay"),
       NGX_EVENT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -154,6 +199,24 @@ static ngx_command_t  ngx_event_core_commands[] = {
       offsetof(ngx_event_conf_t, accept_mutex_delay),
       NULL },
 
+      /* Syntax:  debug_connection address | CIDR | unix:;
+       * Default: —
+       * Context: events
+       * 
+       * 开启针对特定客户端连接的调试日志。除开这些连接，其它连接将使用 error_log 指令设置的日志
+       * 级别。被调试的连接可以使用 IPv4 或 IPv6 网络地址来指定，也可以使用主机名来设置连接。对于
+       * UNIX 域套接字，使用 "unix:" 参数来启用调试日志.
+       *    events {
+       *        debug_connection 127.0.0.1;
+       *        debug_connection localhost;
+       *        debug_connection 192.0.2.0/24;
+       *        debug_connection ::1;
+       *        debug_connection 2001:0db8::/32;
+       *        debug_connection unix:;
+       *        ...
+       *    }
+       * 只有在编译时设置 --with-debug，上述指令才可以工作.
+       */
     { ngx_string("debug_connection"),
       NGX_EVENT_CONF|NGX_CONF_TAKE1,
       ngx_event_debug_connection,

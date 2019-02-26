@@ -40,6 +40,12 @@ static ngx_conf_enum_t  ngx_debug_points[] = {
 
 static ngx_command_t  ngx_core_commands[] = {
 
+    /* Syntax:	daemon on | off;
+     * Default: daemon on;
+     * Context:	main 
+     * 
+     * 决定 Nginx 是否已守护进程的方式工作。主要用于开发.
+     */
     { ngx_string("daemon"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -47,6 +53,12 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, daemon),
       NULL },
 
+      /* Syntax:  master_process on | off;
+       * Default: master_process on;
+       * Context:	main
+       *
+       * 决定是否启动 worker 进程。这条指令是为 nginx 开发者设计的.
+       */
     { ngx_string("master_process"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_FLAG,
       ngx_conf_set_flag_slot,
@@ -54,6 +66,20 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, master),
       NULL },
 
+      /* Syntax:  timer_resolution interval;
+       * Default: —
+       * Context: main 
+       *
+       * 在 worker 进程中降低定时器的精度，因此可以减少产生 gettimeofday() 系统调用的
+       * 次数。默认情况下，每收到一个内核事件，nginx 都会调用 gettimeofday()。使用此指令
+       * 后，nginx 仅在每经过指定的 interval 时间间隔后调用一次 gettimeofday().
+       * 示例:
+       *    timer_resolution 100ms;
+       * 时间间隔的内部实现取决于使用的方法:
+       *    - 使用 kqueue 时，会使用 EVFILT_TIMER 过滤器;
+       *    - 使用 eventport 时，会使用 timer_create();
+       *    - 否则会使用 setitimer().
+       */
     { ngx_string("timer_resolution"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -61,6 +87,12 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, timer_resolution),
       NULL },
 
+      /* Syntax: pid file;
+       * Default: pid logs/nginx.pid;
+       * Context: main
+       *
+       * 定义存储 nginx master 进程 pid 的 file.
+       */
     { ngx_string("pid"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -68,6 +100,14 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, pid),
       NULL },
 
+      /* Syntax:  lock_file file;
+       * Default: lock_file logs/nginx.lock;
+       * Context: main
+       * 
+       * nginx 使用锁机制来实现 accept_mutex，并将访问串行化到共享内存。绝大多数系统中，
+       * 锁是由原子操作实现，那么可以忽略此指令。另外一些系统使用"锁文件"的机制，那么这条
+       * 指令将指定锁文件的前缀.
+       */
     { ngx_string("lock_file"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -75,6 +115,15 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, lock_file),
       NULL },
 
+      /* Syntax:  worker_processes number | auto;
+       * Default: worker_processes 1;
+       * Context: main
+       *
+       * 定义 worker 进程的数量。
+       * 关于这个值的优化依赖很多因素，其中包括(但不限于)CPU 的核数，存储数据的硬盘数量和负载
+       * 模式。如果感觉迷茫，将它设置为等于可用的 CPU 核数是一个不错的开始(值为"auto"时，nginx
+       * 会自动检测它).
+       */
     { ngx_string("worker_processes"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_set_worker_processes,
@@ -82,6 +131,14 @@ static ngx_command_t  ngx_core_commands[] = {
       0,
       NULL },
 
+    /* Syntax:	debug_points abort | stop;
+     * Default:	—
+     * Context:	main
+     *
+     * 该指令用于调试。
+     * 当 nginx 检测到内部错误，比如重启工作进程时出现套接字泄漏，开启 debug_points 将导致
+     * 创建 core 文件(abort)，或者停止进程(stop)以便使用系统调试器进行进一步分析.
+     */
     { ngx_string("debug_points"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_enum_slot,
@@ -89,6 +146,13 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, debug_points),
       &ngx_debug_points },
 
+      /* Syntax:  user user [group];
+       * Default: user nobody nobody;
+       * Context: main
+       *
+       * 定义 worker 进程使用的 user 和 group 身份。如果省略 group，nginx 会使用
+       * 与 user 相同的组名.
+       */
     { ngx_string("user"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE12,
       ngx_set_user,
@@ -96,6 +160,15 @@ static ngx_command_t  ngx_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  worker_priority number;
+       * Default: worker_priority 0;
+       * Context: main
+       * 
+       * 定义 worker 进程的调度优先级。这与 nice 命令行所做的相同: number 为负数代表优先级最高。
+       * 通常允许的范围是 [-20, 20].
+       * 比如:
+       *    worker_priority -10;
+       */
     { ngx_string("worker_priority"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_set_priority,
@@ -103,6 +176,29 @@ static ngx_command_t  ngx_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  worker_cpu_affinity cpumask ...; worker_cpu_affinity auto [cpumask];
+       * Default: —
+       * Context: main 
+       *
+       * 绑定 worker 进程到指定的 CPU 集合。每个 CPU 集合使用一个标记允许使用的 CPU 的位图来表示。
+       * 需要为每个 worker 进程分别设置 CPU 集合。worker 进程默认不会绑定到任何特定的 CPU.
+       * 比如：
+       *    worker_processes    4;
+       *    worker_cpu_affinity 0001 0010 0100 1000;
+       * 将每个 worker 进程分别绑定至不同的 CPU，而
+       *    worker_processes    2;
+       *    worker_cpu_affinity 0101 1010;
+       * 将第一个 worker 进程绑定至 CPU0/CPU2，将第二个 worker 进程绑定至 CPU1/CPU3。上面的第二个例子
+       * 适合超线程的机器.
+       * 
+       * 特殊值 auto 允许将 worker 进程自动绑定到可用的 CPU：
+       *   worker_processes auto;
+       *   worker_cpu_affinity auto;
+       * 可选的 mask 参数可用于限制可用于自动绑定的 CPU：
+       *   worker_cpu_affinity auto 01010101;
+       * 
+       *   这条指令仅在 FreeFSD 和 Linux 系统有效.
+       */
     { ngx_string("worker_cpu_affinity"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_1MORE,
       ngx_set_cpu_affinity,
@@ -110,6 +206,13 @@ static ngx_command_t  ngx_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:  worker_rlimit_nofile number;
+       * Default: —
+       * Context: main
+       *
+       * 修改 worker 进程的打开文件数的最大值限制(RLIMIT_NOFILE)，用于在不重启 master 进程的
+       * 情况下增大该限制.
+       */
     { ngx_string("worker_rlimit_nofile"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
@@ -117,6 +220,13 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, rlimit_nofile),
       NULL },
 
+      /* Syntax:  worker_rlimit_core size;
+       * Default: —
+       * Context: main 
+       *
+       * 修改 worker 进程的 core 文件尺寸的最大值限制(RLIMIT_CORE)，用于在不重启 master
+       * 进程的情况下增大该限制.
+       */
     { ngx_string("worker_rlimit_core"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_off_slot,
@@ -124,6 +234,13 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, rlimit_core),
       NULL },
 
+      /* Syntax:  worker_shutdown_timeout time;
+       * Default: —
+       * Context: main
+       *
+       * 配置正常关闭 worker 进程的超时时间。当时间到期时，nginx 将尝试关闭当前
+       * 打开的所有连接以便于关闭 worker 进程.
+       */
     { ngx_string("worker_shutdown_timeout"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_msec_slot,
@@ -131,6 +248,13 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, shutdown_timeout),
       NULL },
 
+      /* Syntax:  working_directory directory;
+       * Default: —
+       * Context: main
+       *
+       * 定义 worker 进程的当前工作路径。主要用于设置 core 文件的目标地址。worker 进程
+       * 应当具有指定路径的写权限.
+       */
     { ngx_string("working_directory"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_str_slot,
@@ -138,6 +262,24 @@ static ngx_command_t  ngx_core_commands[] = {
       offsetof(ngx_core_conf_t, working_directory),
       NULL },
 
+      /* Syntax:  env variable[=value];
+       * Default: env TZ;
+       * Context: main
+       *
+       * nginx 会默认删除从父进程继承的除 TZ 变量以外的所有环境变量。这条指令允许
+       * nginx 保留某些继承的环境变量，改变它们的值，或者创建新的环境变量。这些变量将：
+       *   - 在热升级 nginx 执行文件时被继承;
+       *   - 被 ngx_http_perl_module 模块使用
+       *   - 被工作进程使用。请大家牢记，使用这种方法控制系统库不总是可行的，因为在这条指令设置
+       *     环境变量以前，系统库初始化时就已检查这些环境变量的情况也并非少见。但有一个例外，就是
+       *     上面提到的热升级 nginx 执行文件.
+       * TZ 变量总是被继承，并且可被 ngx_http_perl_module 模块使用，除非明确配置不允许这样.
+       * 使用示例：
+       *    env MALLOC_OPTIONS;
+       *    env PERL5LIB=/data/site/modules;
+       *    env OPENSSL_ALLOW_PROXY_CERTS=1;
+       * NGINX 环境变量是由 nginx 内部设置和使用，用户不应直接设置它。
+       */
     { ngx_string("env"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_set_env,
@@ -145,6 +287,14 @@ static ngx_command_t  ngx_core_commands[] = {
       0,
       NULL },
 
+      /* Syntax:	load_module file;
+       * Default:	—
+       * Context:	main 
+       *
+       * 加载动态模块。
+       * 使用示例:
+       *     load_module modules/ngx_mail_module.so;
+       */
     { ngx_string("load_module"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
       ngx_load_module,
